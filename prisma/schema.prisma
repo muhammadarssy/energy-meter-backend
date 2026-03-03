@@ -1,0 +1,1375 @@
+// =============================================================================
+// ENERGY METER - UNIFIED PRISMA SCHEMA
+// =============================================================================
+// Services yang dikonsolidasikan:
+//   authentication-services    → users, permissions, roles, user_roles,
+//                                user_permissions, role_permissions
+//   master-data-services       → products, product_types, product_categories,
+//                                product_category_mappings, product_components,
+//                                suppliers, level_inspections
+//   generate-pln-code-services → material_groups, material_sub_groups,
+//                                variants, factories, pln_codes,
+//                                meter_code_counters, boxes, box_counters
+//   warehouse-new-services     → warehouses, stock_units, stock_transactions,
+//                                warehouse_requests
+//   receiving-services         → batches, purchase_orders, receiving_headers,
+//                                receiving_items, serial_stagings
+//   assembly-services          → pln_orders, assembly_orders,
+//                                assembly_order_items,
+//                                assembly_order_confirmations,
+//                                assembly_order_item_confirmations
+//   tracking-services          → tracking, qc_results, assembly_components,
+//                                sample_inspections
+//   shipping-services          → partners, carriers, shipping_orders,
+//                                shipping_items, shipping_movements,
+//                                shipping_details
+//   luhn-algortm-services      → luhn_validation_logs
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum AssemblyStatus {
+  pending
+  in_progress
+  partial
+  completed
+  failed
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  RESERVED   // Komponen di-reserve untuk assembly order
+  RELEASED   // Reservasi dibatalkan
+  PENDING    // Menunggu QC/approval sebelum masuk stok
+  TRANSFER   // Transfer antar gudang
+  ADJUSTMENT // Penyesuaian stok manual
+}
+
+enum TrackingStatus {
+  created
+  on_qc
+  qc_passed
+  qc_failed
+  in_transit
+  stored
+  shipped
+  delivered
+}
+
+enum TrackingType {
+  receiving
+  assembly
+  shipping
+}
+
+enum ShippingStatus {
+  pending
+  shipped
+  delivered
+  canceled
+}
+
+enum ShippingMovementType {
+  dispatch
+  in_transit
+  delivered
+}
+
+enum PartnerType {
+  vendor
+  client
+}
+
+enum ShippingType {
+  inbound
+  outbound
+}
+
+enum PlnCodeStatus {
+  PARTIAL
+  PRINTED
+  MATERIAL_SELECTED
+  COMPLETED
+  LASERED
+  BOXED
+}
+
+enum BoxStatus {
+  OPEN
+  SEALED
+  SHIPPED
+}
+
+enum ReceivingStatus {
+  pending
+  accept
+  reject
+}
+
+enum QcResultStatus {
+  pass
+  fail
+  conditional // Lulus dengan catatan / perbaikan minor
+}
+
+enum ReceivingItemType {
+  product
+  service
+  material
+}
+
+// Fase QC — untuk membedakan konteks sample_inspections
+enum QcPhase {
+  receiving // QC saat barang diterima dari supplier
+  assembly  // QC setelah proses assembly selesai
+  shipping  // QC sebelum pengiriman ke customer
+}
+
+// Tipe request masuk gudang — terjadi 2x: setelah QC receiving & setelah QC assembly
+enum WarehouseRequestType {
+  inbound_receiving // Barang dari receiving yang sudah lolos QC
+  inbound_assembly  // Finished goods dari assembly yang sudah lolos QC
+}
+
+enum WarehouseRequestStatus {
+  pending
+  approved
+  rejected
+}
+
+// Kategori tingkat keparahan defect — dipakai di defect_types & qc_result_defects
+enum DefectCategory {
+  critical // Langsung reject, tidak boleh ada sama sekali
+  major    // Berpengaruh pada fungsi produk
+  minor    // Cacat tampilan, tidak berpengaruh fungsi
+}
+
+// =============================================================================
+// AUTHENTICATION
+// =============================================================================
+
+model users {
+  id         String    @id @default(uuid())
+  name       String
+  username   String?   @unique
+  email      String    @unique
+  password   String    // Harus di-hash (bcrypt/argon2) di application layer
+  department String?
+  is_active  Boolean   @default(true)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  // Auth relations
+  permissions user_permissions[]
+  roles       user_roles[]
+
+  // Warehouse relations
+  warehouse_requests_made     warehouse_requests[] @relation("WarehouseRequestedBy")
+  warehouse_requests_approved warehouse_requests[] @relation("WarehouseApprovedBy")
+
+  // Domain back-relations
+  purchase_orders      purchase_orders[]              @relation("PurchaseOrderCreatedBy")
+  received_headers     receiving_headers[]            @relation("ReceivingHandledBy")
+  qc_inspections       qc_results[]                   @relation("QcInspector")
+  confirmed_assemblies assembly_order_confirmations[] @relation("AssemblyConfirmedBy")
+  stock_movements      stock_transactions[]            @relation("StockPerformedBy")
+  handled_shipments    shipping_movements[]            @relation("ShippingMovementHandledBy")
+  shipped_orders       shipping_orders[]               @relation("ShippingHandledBy")
+  requested_assemblies assembly_orders[]               @relation("AssemblyRequestedBy")
+
+  // PLN Code back-relations
+  pln_codes_created pln_codes[] @relation("PlnCreatedBy")
+  pln_codes_lasered pln_codes[] @relation("PlnLaseredBy")
+  pln_codes_printed pln_codes[] @relation("PlnPrintedBy")
+  boxes_created     boxes[]     @relation("BoxCreatedBy")
+  boxes_sealed      boxes[]     @relation("BoxSealedBy")
+
+  // Attachment back-relation
+  attachments attachments[]
+
+  // Production stop back-relation
+  production_stops_triggered production_stops[] @relation("ProductionStopTriggeredBy")
+
+  // Serial scanning back-relation
+  serial_stagings_scanned serial_stagings[] @relation("SerialScannedBy")
+
+  @@index([deleted_at])
+  @@map("users")
+}
+
+model permissions {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  users            user_permissions[]
+  role_permissions role_permissions[]
+
+  @@map("permissions")
+}
+
+model roles {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  user_roles       user_roles[]
+  role_permissions role_permissions[]
+
+  @@map("roles")
+}
+
+model user_roles {
+  id         String   @id @default(uuid())
+  user_id    String
+  role_id    String
+  created_at DateTime @default(now())
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role roles @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, role_id])
+  @@map("user_roles")
+}
+
+model user_permissions {
+  id            String @id @default(uuid())
+  user_id       String
+  permission_id String
+
+  user       users       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  permission permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, permission_id])
+  @@map("user_permissions")
+}
+
+model role_permissions {
+  id            String   @id @default(uuid())
+  role_id       String
+  permission_id String
+  created_at    DateTime @default(now())
+
+  role       roles       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission permissions @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@unique([role_id, permission_id])
+  @@map("role_permissions")
+}
+
+// =============================================================================
+// MASTER DATA
+// =============================================================================
+
+model suppliers {
+  id            String    @id @default(uuid())
+  code          String    @unique
+  name          String
+  contact_name  String?
+  contact_email String?
+  contact_phone String?
+  address       String?
+  is_active     Boolean   @default(true)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+
+  products products[]
+  batches  batches[]
+
+  @@index([deleted_at])
+  @@map("suppliers")
+}
+
+model product_types {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  name        String
+  description String?
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  products products[]
+
+  @@index([deleted_at])
+  @@map("product_types")
+}
+
+model product_categories {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  name        String
+  description String?
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  mappings product_category_mappings[]
+
+  @@index([deleted_at])
+  @@map("product_categories")
+}
+
+model products {
+  id              String    @id @default(uuid())
+  sap_code        String    @unique
+  name            String
+  description     String?
+  product_type_id String
+  supplier_id     String
+  is_serialize    Boolean   @default(true)
+  qc_product      String?   // Kode/nama template QC untuk produk ini
+  image_url       String?
+  is_active       Boolean   @default(true)
+  is_qc           Boolean   @default(true)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  deleted_at      DateTime?
+
+  // Master data relations
+  type              product_types              @relation(fields: [product_type_id], references: [id], onDelete: Restrict)
+  supplier          suppliers                  @relation(fields: [supplier_id], references: [id], onDelete: Restrict)
+  categories        product_category_mappings[]
+  level_inspections level_inspections[]
+  parent_components product_components[]       @relation("ParentComponents")
+  used_as_component product_components[]       @relation("ComponentProducts")
+
+  // Back-relations dari domain lain
+  assembly_orders                   assembly_orders[]
+  assembly_order_items              assembly_order_items[]
+  assembly_order_item_confirmations assembly_order_item_confirmations[]
+  receiving_items                   receiving_items[]
+  stock_units                       stock_units[]
+  shipping_items                    shipping_items[]
+  tracking_items                    tracking[]
+
+  @@index([is_active])
+  @@index([product_type_id])
+  @@index([supplier_id])
+  @@index([deleted_at])
+  @@map("products")
+}
+
+model product_category_mappings {
+  id          String   @id @default(uuid())
+  product_id  String
+  category_id String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  product  products           @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  category product_categories @relation(fields: [category_id], references: [id], onDelete: Cascade)
+
+  @@unique([product_id, category_id])
+  @@map("product_category_mappings")
+}
+
+model product_components {
+  id                   String   @id @default(uuid())
+  parent_product_id    String
+  component_product_id String
+  quantity             Int      @default(1)
+  required             Boolean  @default(false)
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  parent    products @relation("ParentComponents", fields: [parent_product_id], references: [id], onDelete: Cascade)
+  component products @relation("ComponentProducts", fields: [component_product_id], references: [id], onDelete: Restrict)
+
+  @@map("product_components")
+}
+
+model level_inspections {
+  id              String    @id @default(uuid())
+  product_id      String
+  level           String    // Inspection level: "I" | "II" | "III" (ISO 2859)
+  // AQL percentage per kategori (input dari QA engineer)
+  aql_critical    Float     // AQL level critical, contoh: 0.0 (zero defect)
+  aql_major       Float     // AQL level major, contoh: 1.0
+  aql_minor       Float     // AQL level minor, contoh: 2.5
+  // Hasil kalkulasi dari tabel ISO 2859 (diisi saat setup, atau dihitung di app layer)
+  sample_size     Int?      // Jumlah unit yang harus dicek
+  accept_critical Int?      // Max defect critical yang masih bisa diterima
+  accept_major    Int?      // Max defect major yang masih bisa diterima
+  accept_minor    Int?      // Max defect minor yang masih bisa diterima
+  reject_critical Int?      // Jumlah defect critical yang memicu STOP
+  reject_major    Int?      // Jumlah defect major yang memicu STOP
+  reject_minor    Int?      // Jumlah defect minor yang memicu STOP
+  // Link ke QC template — template checklist yang dipakai untuk produk ini
+  qc_template_id  String?
+  is_active       Boolean   @default(true)
+  valid_from      DateTime  @default(now())
+  valid_to        DateTime?
+  notes           String?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  product     products      @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  qc_template qc_templates? @relation(fields: [qc_template_id], references: [id], onDelete: SetNull)
+
+  // Daftar defect yang relevan untuk level inspeksi ini (menggantikan used_defects String)
+  defect_types       level_inspection_defects[]
+  sample_inspections sample_inspections[]
+
+  @@index([product_id, is_active])
+  @@index([qc_template_id])
+  @@map("level_inspections")
+}
+
+// =============================================================================
+// QC MASTER DATA
+// =============================================================================
+
+// Master jenis defect — menggantikan used_defects String (comma-separated)
+model defect_types {
+  id          String         @id @default(uuid())
+  code        String         @unique // contoh: "SCRATCH", "DENT", "MISSING_SEAL"
+  name        String
+  category    DefectCategory
+  description String?
+  is_active   Boolean        @default(true)
+  created_at  DateTime       @default(now())
+  updated_at  DateTime       @updatedAt
+
+  // Back-relations
+  level_inspections level_inspection_defects[]
+  qc_result_defects qc_result_defects[]
+
+  @@index([category])
+  @@index([is_active])
+  @@map("defect_types")
+}
+
+// Junction table: defect types yang relevan untuk satu level inspection
+model level_inspection_defects {
+  id                  String @id @default(uuid())
+  level_inspection_id String
+  defect_type_id      String
+
+  level_inspection level_inspections @relation(fields: [level_inspection_id], references: [id], onDelete: Cascade)
+  defect_type      defect_types      @relation(fields: [defect_type_id], references: [id], onDelete: Restrict)
+
+  @@unique([level_inspection_id, defect_type_id])
+  @@map("level_inspection_defects")
+}
+
+// Template/jenis QC — menggantikan qc_id String + qc_name String yang tersebar
+// display_order menentukan urutan tampil di frontend
+model qc_templates {
+  id            String   @id @default(uuid())
+  code          String   @unique // contoh: "QC-RCV-METER", "QC-ASM-METER"
+  name          String           // Nama display: "QC Receiving Meter Listrik"
+  description   String?
+  qc_phase      QcPhase          // receiving | assembly | shipping
+  display_order Int      @default(0) // Urutan tampil di frontend per fase
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  checklist_items    qc_checklist_items[]
+  level_inspections  level_inspections[]
+  sample_inspections sample_inspections[]
+  qc_results         qc_results[]
+
+  @@index([qc_phase, display_order])
+  @@index([is_active])
+  @@map("qc_templates")
+}
+
+// Item-item checklist dalam satu template QC
+model qc_checklist_items {
+  id             String   @id @default(uuid())
+  qc_template_id String
+  label          String   // contoh: "Cek segel fisik", "Cek nomor seri"
+  description    String?
+  display_order  Int      @default(0) // Urutan item dalam form QC
+  is_required    Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  qc_template qc_templates @relation(fields: [qc_template_id], references: [id], onDelete: Cascade)
+
+  @@index([qc_template_id, display_order])
+  @@map("qc_checklist_items")
+}
+
+// =============================================================================
+// PLN CODE GENERATION
+// =============================================================================
+
+model material_groups {
+  id          String   @id @default(uuid())
+  code        String   @unique @db.VarChar(2)
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  is_active   Boolean  @default(true)
+  is_default  Boolean  @default(false)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  sub_groups material_sub_groups[]
+  pln_codes  pln_codes[]
+
+  @@map("material_groups")
+}
+
+model material_sub_groups {
+  id                String   @id @default(uuid())
+  material_group_id String
+  code              String   @db.VarChar(2)
+  name              String   @db.VarChar(255)
+  description       String?  @db.Text
+  is_active         Boolean  @default(true)
+  is_default        Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  material_group material_groups @relation(fields: [material_group_id], references: [id], onDelete: Cascade)
+  pln_codes      pln_codes[]
+
+  @@unique([material_group_id, code])
+  @@map("material_sub_groups")
+}
+
+model variants {
+  id          String   @id @default(uuid())
+  code        String   @unique @db.VarChar(7)
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  is_active   Boolean  @default(true)
+  is_default  Boolean  @default(false)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  pln_codes pln_codes[]
+
+  @@map("variants")
+}
+
+model factories {
+  id          String   @id @default(uuid())
+  code        String   @unique @db.VarChar(4)
+  name        String   @db.VarChar(255)
+  location    String?  @db.VarChar(255)
+  description String?  @db.Text
+  is_active   Boolean  @default(true)
+  is_default  Boolean  @default(false)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  pln_codes          pln_codes[]
+  meter_code_counter meter_code_counters?
+
+  @@map("factories")
+}
+
+model pln_codes {
+  id                    String        @id @default(uuid())
+  full_code             String?       @unique @db.VarChar(50)
+  // Material info (nullable untuk partial generation)
+  material_group_id     String?
+  material_sub_group_id String?
+  variant_id            String?
+  // Core components
+  factory_id            String
+  tag                   String        @db.VarChar(4)
+  meter_unique_code     String        @db.VarChar(8)
+  check_code            String        @db.VarChar(1)
+  status                PlnCodeStatus @default(PARTIAL)
+  // Fix: assembly_order_no String → assembly_order_id FK
+  assembly_order_id     String?
+  generated_at          DateTime      @default(now())
+  notes                 String?       @db.Text
+  // Laser marking
+  is_lasered            Boolean       @default(false)
+  lasered_at            DateTime?
+  laser_notes           String?       @db.Text
+  // Print tracking
+  is_printed            Boolean       @default(false)
+  printed_at            DateTime?
+  print_notes           String?       @db.Text
+  // Box grouping
+  box_id                String?
+  // User references (FK — onDelete: SetNull agar data kode tetap ada meski user dihapus)
+  created_by_id         String?
+  lasered_by_id         String?
+  printed_by_id         String?
+
+  material_group     material_groups?     @relation(fields: [material_group_id], references: [id])
+  material_sub_group material_sub_groups? @relation(fields: [material_sub_group_id], references: [id])
+  variant            variants?            @relation(fields: [variant_id], references: [id])
+  factory            factories            @relation(fields: [factory_id], references: [id])
+  box                boxes?               @relation(fields: [box_id], references: [id])
+  assembly_order     assembly_orders?     @relation(fields: [assembly_order_id], references: [id], onDelete: SetNull)
+  created_by         users?               @relation("PlnCreatedBy", fields: [created_by_id], references: [id], onDelete: SetNull)
+  lasered_by         users?               @relation("PlnLaseredBy", fields: [lasered_by_id], references: [id], onDelete: SetNull)
+  printed_by         users?               @relation("PlnPrintedBy", fields: [printed_by_id], references: [id], onDelete: SetNull)
+
+  // Back-relations
+  tracking_items tracking[]
+
+  @@index([material_group_id])
+  @@index([material_sub_group_id])
+  @@index([variant_id])
+  @@index([factory_id])
+  @@index([meter_unique_code])
+  @@index([generated_at])
+  @@index([is_lasered])
+  @@index([is_printed])
+  @@index([status])
+  @@index([box_id])
+  @@index([assembly_order_id])
+  @@map("pln_codes")
+}
+
+model meter_code_counters {
+  id           String   @id @default(uuid())
+  factory_id   String   @unique
+  last_counter Int      @default(0)
+  updated_at   DateTime @updatedAt
+
+  factory factories @relation(fields: [factory_id], references: [id], onDelete: Cascade)
+
+  @@map("meter_code_counters")
+}
+
+model boxes {
+  id                String    @id @default(uuid())
+  box_number        String    @unique
+  // Fix: assembly_order_no String → assembly_order_id FK (non-nullable, setiap box harus ada assembly order)
+  assembly_order_id String
+  capacity          Int       @default(12)
+  qr_code           String?   @db.Text
+  status            BoxStatus @default(OPEN)
+  created_at        DateTime  @default(now())
+  sealed_at         DateTime?
+  notes             String?   @db.Text
+  created_by_id     String?
+  sealed_by_id      String?
+
+  pln_codes      pln_codes[]
+  assembly_order assembly_orders @relation(fields: [assembly_order_id], references: [id], onDelete: Restrict)
+  created_by     users?          @relation("BoxCreatedBy", fields: [created_by_id], references: [id], onDelete: SetNull)
+  sealed_by      users?          @relation("BoxSealedBy", fields: [sealed_by_id], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([created_at])
+  @@index([assembly_order_id])
+  @@map("boxes")
+}
+
+model box_counters {
+  id                String   @id @default(uuid())
+  // Fix: assembly_order_no String → assembly_order_id FK
+  assembly_order_id String   @unique
+  last_counter      Int      @default(0)
+  updated_at        DateTime @updatedAt
+
+  assembly_order assembly_orders @relation(fields: [assembly_order_id], references: [id], onDelete: Cascade)
+
+  @@map("box_counters")
+}
+
+// =============================================================================
+// WAREHOUSE
+// =============================================================================
+
+model warehouses {
+  id         String    @id @default(uuid())
+  code       String    @unique
+  name       String
+  location   String
+  is_active  Boolean   @default(true)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  stock_units        stock_units[]
+  shipping_items     shipping_items[]
+  warehouse_requests warehouse_requests[]
+
+  @@index([deleted_at])
+  @@map("warehouses")
+}
+
+model stock_units {
+  id                String   @id @default(uuid())
+  warehouse_id      String
+  product_id        String
+  quantity          Int      @default(0)
+  quantity_reserved Int      @default(0) // Dikurangi saat assembly_order_item_confirmations dibuat
+  quantity_pending  Int      @default(0) // Barang masuk yang masih menunggu warehouse_request approved
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  warehouse              warehouses                        @relation(fields: [warehouse_id], references: [id], onDelete: Restrict)
+  product                products                          @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  stock_transactions     stock_transactions[]
+  assembly_confirmations assembly_order_item_confirmations[]
+
+  @@unique([warehouse_id, product_id])
+  @@index([warehouse_id, product_id])
+  @@map("stock_units")
+}
+
+model stock_transactions {
+  id            String            @id @default(uuid())
+  stock_unit_id String
+  performed_by  String?
+  movement_type StockMovementType
+  quantity      Int               // Selalu positif; arah ditentukan oleh movement_type
+  reference_id  String?           // ID referensi sumber transaksi (assembly_order_id, shipping_order_id, dll)
+  reference_type String?          // Tipe sumber: "assembly_order" | "receiving_header" | "shipping_order"
+  movement_date DateTime          @default(now())
+  notes         String?
+  tracking_id   String?
+  created_at    DateTime          @default(now())
+  updated_at    DateTime          @updatedAt
+
+  stock_unit             stock_units                       @relation(fields: [stock_unit_id], references: [id], onDelete: Restrict)
+  user                   users?                            @relation("StockPerformedBy", fields: [performed_by], references: [id], onDelete: SetNull)
+  tracking               tracking?                         @relation(fields: [tracking_id], references: [id], onDelete: SetNull)
+  assembly_confirmations assembly_order_item_confirmations[]
+
+  @@index([movement_date])
+  @@index([movement_type])
+  @@index([stock_unit_id])
+  @@index([reference_id])
+  @@map("stock_transactions")
+}
+
+// Request masuk gudang — terjadi setelah QC receiving selesai (inbound_receiving)
+// dan setelah QC assembly selesai (inbound_assembly)
+model warehouse_requests {
+  id                  String                @id @default(uuid())
+  request_type        WarehouseRequestType
+  warehouse_id        String
+  requested_by        String
+  approved_by         String?
+  status              WarehouseRequestStatus @default(pending)
+  notes               String?
+  approved_at         DateTime?
+  created_at          DateTime              @default(now())
+  updated_at          DateTime              @updatedAt
+  // Source polymorphic: salah satu harus diisi sesuai request_type
+  receiving_header_id String?               // Diisi jika request_type = inbound_receiving
+  assembly_order_id   String?               // Diisi jika request_type = inbound_assembly
+
+  warehouse        warehouses         @relation(fields: [warehouse_id], references: [id], onDelete: Restrict)
+  requester        users              @relation("WarehouseRequestedBy", fields: [requested_by], references: [id], onDelete: Restrict)
+  approver         users?             @relation("WarehouseApprovedBy", fields: [approved_by], references: [id], onDelete: SetNull)
+  receiving_header receiving_headers? @relation(fields: [receiving_header_id], references: [id], onDelete: SetNull)
+  assembly_order   assembly_orders?   @relation(fields: [assembly_order_id], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([request_type])
+  @@index([receiving_header_id])
+  @@index([assembly_order_id])
+  @@map("warehouse_requests")
+}
+
+// =============================================================================
+// RECEIVING
+// =============================================================================
+
+model batches {
+  id          String    @id @default(uuid())
+  code        String    @unique // Format bebas, contoh: "20240301-001", "BATCH-A01"
+  supplier_id String?
+  description String?
+  notes       String?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  supplier          suppliers?          @relation(fields: [supplier_id], references: [id], onDelete: SetNull)
+  receiving_headers receiving_headers[]
+  tracking_items    tracking[]
+  shipping_details  shipping_details[]
+
+  @@index([deleted_at])
+  @@index([supplier_id])
+  @@map("batches")
+}
+
+model purchase_orders {
+  id         String    @id @default(uuid())
+  po_number  String    @unique
+  order_date DateTime
+  notes      String?
+  user_id    String?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  created_by        users?              @relation("PurchaseOrderCreatedBy", fields: [user_id], references: [id], onDelete: SetNull)
+  receiving_headers receiving_headers[]
+
+  @@index([order_date])
+  @@index([deleted_at])
+  @@map("purchase_orders")
+}
+
+model receiving_headers {
+  id                String          @id @default(uuid())
+  purchase_order_id String
+  // Fix: reference_ao String? → assembly_order_id FK (nullable: tidak semua receiving terkait assembly)
+  assembly_order_id String?
+  gr_number         String          @unique
+  notes             String?
+  image_url         String?
+  received_by       String
+  received_date     DateTime
+  status            ReceivingStatus @default(pending)
+  batch_id          String
+  location          String
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+  deleted_at        DateTime?
+
+  purchase_order     purchase_orders    @relation(fields: [purchase_order_id], references: [id], onDelete: Restrict)
+  receiver           users              @relation("ReceivingHandledBy", fields: [received_by], references: [id], onDelete: Restrict)
+  batch              batches            @relation(fields: [batch_id], references: [id], onDelete: Restrict)
+  assembly_order     assembly_orders?   @relation(fields: [assembly_order_id], references: [id], onDelete: SetNull)
+  receiving_items    receiving_items[]
+  warehouse_requests warehouse_requests[]
+
+  @@index([status])
+  @@index([batch_id])
+  @@index([received_date])
+  @@index([deleted_at])
+  @@map("receiving_headers")
+}
+
+model receiving_items {
+  id                  String            @id @default(uuid())
+  receiving_header_id String
+  product_id          String
+  is_serialized       Boolean
+  quantity            Int
+  notes               String?
+  item_type           ReceivingItemType @default(product)
+  documentation_uuid  String?
+  created_at          DateTime          @default(now())
+  updated_at          DateTime          @updatedAt
+
+  receiving_header   receiving_headers    @relation(fields: [receiving_header_id], references: [id], onDelete: Cascade)
+  product            products             @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  serial_stagings    serial_stagings[]
+  tracking_items     tracking[]
+  sample_inspections sample_inspections[]
+
+  @@index([product_id])
+  @@map("receiving_items")
+}
+
+model serial_stagings {
+  id                String   @id @default(uuid())
+  receiving_item_id String
+  serial_number     String   @unique
+  scanned_by        String?  // ID user yang melakukan scanning
+  scanned_at        DateTime @default(now())
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  receiving_item receiving_items @relation(fields: [receiving_item_id], references: [id], onDelete: Cascade)
+  scanner        users?          @relation("SerialScannedBy", fields: [scanned_by], references: [id], onDelete: SetNull)
+
+  @@index([receiving_item_id])
+  @@index([scanned_by])
+  @@map("serial_stagings")
+}
+
+// =============================================================================
+// ASSEMBLY
+// =============================================================================
+
+model pln_orders {
+  id           String    @id @default(uuid())
+  order_number String    @unique
+  order_date   DateTime
+  deadline     DateTime
+  quantity     Int
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  deleted_at   DateTime?
+
+  assembly_orders assembly_orders[]
+  tracking_items  tracking[]
+
+  @@index([order_date])
+  @@index([deadline])
+  @@index([deleted_at])
+  @@map("pln_orders")
+}
+
+model assembly_orders {
+  id           String         @id @default(uuid())
+  order_number String         @unique
+  product_id   String
+  pln_order_id String?
+  request_by   String?
+  quantity     Int
+  status       AssemblyStatus @default(pending)
+  notes        String?
+  started_at   DateTime?      // Timestamp saat assembly mulai dikerjakan
+  completed_at DateTime?      // Timestamp saat assembly selesai
+  created_at   DateTime       @default(now())
+  updated_at   DateTime       @updatedAt
+  deleted_at   DateTime?
+
+  product      products    @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  pln_order    pln_orders? @relation(fields: [pln_order_id], references: [id], onDelete: SetNull)
+  requested_by users?      @relation("AssemblyRequestedBy", fields: [request_by], references: [id], onDelete: SetNull)
+
+  items              assembly_order_items[]
+  confirmations      assembly_order_confirmations[]
+  item_confirmations assembly_order_item_confirmations[]
+  tracking_items     tracking[]
+  sample_inspections sample_inspections[]
+  // Back-relations dari fix FK
+  receiving_headers  receiving_headers[]
+  warehouse_requests warehouse_requests[]
+  pln_code_list      pln_codes[]
+  boxes              boxes[]
+  box_counter        box_counters?
+
+  @@index([status])
+  @@index([product_id])
+  @@index([created_at])
+  @@index([deleted_at])
+  @@map("assembly_orders")
+}
+
+model assembly_order_items {
+  id                String   @id @default(uuid())
+  assembly_order_id String
+  product_id        String
+  qty_request       Int
+  qty_confirmed     Int      @default(0)
+  qty_fulfilled     Int      @default(0)
+  required          Boolean  @default(false)
+  is_serialized     Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  assembly_order assembly_orders                    @relation(fields: [assembly_order_id], references: [id], onDelete: Cascade)
+  product        products                           @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  confirmations  assembly_order_item_confirmations[]
+
+  @@map("assembly_order_items")
+}
+
+model assembly_order_confirmations {
+  id                String         @id @default(uuid())
+  assembly_order_id String
+  confirmed_by      String
+  status            AssemblyStatus
+  confirmed_at      DateTime       @default(now())
+  note              String?
+
+  assembly_order assembly_orders @relation(fields: [assembly_order_id], references: [id], onDelete: Cascade)
+  user           users           @relation("AssemblyConfirmedBy", fields: [confirmed_by], references: [id], onDelete: Restrict)
+
+  @@index([assembly_order_id])
+  @@map("assembly_order_confirmations")
+}
+
+// Konfirmasi gudang per item komponen
+// Saat dibuat: stock_unit_id menunjuk stok yang akan dipakai,
+//              stock_transaction_id mencatat reservasi (RESERVED) yang dibuat
+model assembly_order_item_confirmations {
+  id                   String  @id @default(uuid())
+  assembly_order_id    String
+  order_item_id        String
+  product_id           String
+  qty_confirmed        Int
+  note                 String?
+  // Stock linkage: dibuat saat gudang konfirmasi ketersediaan komponen
+  stock_unit_id        String? // FK ke stock_units — stok mana yang dipesan
+  stock_transaction_id String? // FK ke stock_transactions RESERVED yang dibuat
+
+  assembly_order    assembly_orders      @relation(fields: [assembly_order_id], references: [id], onDelete: Cascade)
+  order_item        assembly_order_items @relation(fields: [order_item_id], references: [id], onDelete: Cascade)
+  product           products             @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  stock_unit        stock_units?         @relation(fields: [stock_unit_id], references: [id], onDelete: SetNull)
+  stock_transaction stock_transactions?  @relation(fields: [stock_transaction_id], references: [id], onDelete: SetNull)
+
+  @@map("assembly_order_item_confirmations")
+}
+
+// =============================================================================
+// TRACKING
+// =============================================================================
+
+model tracking {
+  id                String         @id @default(uuid())
+  code_item         String         @unique
+  is_serialize      Boolean
+  serial_number     String?        @unique
+  product_id        String
+  batch_id          String?
+  tracking_type     TrackingType   @default(receiving)
+  status            TrackingStatus @default(created)
+  original_quantity Int            @default(1)
+  current_quantity  Int            @default(1)
+  consumed_quantity Int            @default(0)
+  // Fix: pln_code String? → pln_code_id FK ke pln_codes
+  pln_code_id       String?
+  receiving_item_id String?
+  assembly_id       String?
+  shipping_id       String?
+  pln_order_id      String?
+  notes             String?
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+  deleted_at        DateTime?
+
+  product        products         @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  batch          batches?         @relation(fields: [batch_id], references: [id], onDelete: SetNull)
+  pln_code       pln_codes?       @relation(fields: [pln_code_id], references: [id], onDelete: SetNull)
+  receiving_item receiving_items? @relation(fields: [receiving_item_id], references: [id], onDelete: SetNull)
+  assembly_order assembly_orders? @relation(fields: [assembly_id], references: [id], onDelete: SetNull)
+  shipping_order shipping_orders? @relation(fields: [shipping_id], references: [id], onDelete: SetNull)
+  pln_order      pln_orders?      @relation(fields: [pln_order_id], references: [id], onDelete: SetNull)
+
+  qc_results         qc_results[]
+  parent_of          assembly_components[] @relation("ParentComponents")
+  component_of       assembly_components[] @relation("ComponentProducts")
+  stock_transactions stock_transactions[]
+  shipping_details   shipping_details[]
+
+  @@index([status])
+  @@index([product_id])
+  @@index([batch_id])
+  @@index([tracking_type])
+  @@index([created_at])
+  @@index([deleted_at])
+  @@map("tracking")
+}
+
+model qc_results {
+  id                   String         @id @default(uuid())
+  tracking_id          String
+  inspector_by         String
+  inspection_date      DateTime       @default(now())
+  result               QcResultStatus
+  // qc_template_id menggantikan qc_id String + qc_name String
+  qc_template_id       String?
+  qc_place             String         @default("Unknown")
+  notes                String?
+  sample_inspection_id String?
+  created_at           DateTime       @default(now())
+  updated_at           DateTime       @updatedAt
+
+  tracking          tracking            @relation(fields: [tracking_id], references: [id], onDelete: Cascade)
+  inspector         users               @relation("QcInspector", fields: [inspector_by], references: [id], onDelete: Restrict)
+  sample_inspection sample_inspections? @relation(fields: [sample_inspection_id], references: [id], onDelete: SetNull)
+  qc_template       qc_templates?       @relation(fields: [qc_template_id], references: [id], onDelete: SetNull)
+
+  // Back-relations
+  defects          qc_result_defects[]
+  production_stops production_stops[]
+
+  @@index([tracking_id])
+  @@index([result])
+  @@index([inspection_date])
+  @@index([qc_template_id])
+  @@map("qc_results")
+}
+
+model assembly_components {
+  id                    String   @id @default(uuid())
+  parent_tracking_id    String
+  component_tracking_id String
+  quantity              Int
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  parent    tracking @relation("ParentComponents", fields: [parent_tracking_id], references: [id], onDelete: Cascade)
+  component tracking @relation("ComponentProducts", fields: [component_tracking_id], references: [id], onDelete: Restrict)
+
+  @@map("assembly_components")
+}
+
+// Rencana inspeksi sampling (AQL) — snapshot dari level_inspections saat tracking dibuat
+// qc_phase membedakan konteks: receiving / assembly / shipping
+model sample_inspections {
+  id                  String   @id @default(uuid())
+  qc_phase            QcPhase  @default(receiving)
+  receiving_item_id   String?
+  assembly_id         String?
+  shipping_id         String?
+  // Audit trail: dari level inspection mana snapshot ini diambil
+  level_inspection_id String?
+  // QC template yang dipakai (disalin dari level_inspections.qc_template_id)
+  qc_template_id      String?
+  inspection_level    String   // "I" | "II" | "III"
+  // Snapshot AQL per kategori (disalin dari level_inspections)
+  aql_critical        Float
+  aql_major           Float
+  aql_minor           Float
+  // Kalkulasi sampling (disalin dari level_inspections atau dihitung di app layer)
+  sample_size         Int      // Jumlah unit yang dicek
+  accept_critical     Int      // Max defect critical → masih pass
+  accept_major        Int      // Max defect major → masih pass
+  accept_minor        Int      // Max defect minor → masih pass
+  reject_critical     Int      // Defect critical >= ini → STOP produksi
+  reject_major        Int      // Defect major >= ini → STOP produksi
+  reject_minor        Int      // Defect minor >= ini → STOP produksi
+  notes               String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  receiving_item   receiving_items?  @relation(fields: [receiving_item_id], references: [id], onDelete: SetNull)
+  assembly_order   assembly_orders?  @relation(fields: [assembly_id], references: [id], onDelete: SetNull)
+  shipping_order   shipping_orders?  @relation(fields: [shipping_id], references: [id], onDelete: SetNull)
+  level_inspection level_inspections? @relation(fields: [level_inspection_id], references: [id], onDelete: SetNull)
+  qc_template      qc_templates?     @relation(fields: [qc_template_id], references: [id], onDelete: SetNull)
+  qc_results       qc_results[]
+
+  @@index([qc_phase])
+  @@index([level_inspection_id])
+  @@index([qc_template_id])
+  @@map("sample_inspections")
+}
+
+// Detail defect yang ditemukan dalam satu sesi QC
+// Setelah semua defect diinput, app layer menghitung total per kategori
+// dan membandingkan vs sample_inspections.reject_* untuk keputusan STOP
+model qc_result_defects {
+  id             String         @id @default(uuid())
+  qc_result_id   String
+  defect_type_id String
+  quantity       Int            @default(1)
+  notes          String?
+  created_at     DateTime       @default(now())
+
+  qc_result   qc_results   @relation(fields: [qc_result_id], references: [id], onDelete: Cascade)
+  defect_type defect_types @relation(fields: [defect_type_id], references: [id], onDelete: Restrict)
+
+  @@index([qc_result_id])
+  @@map("qc_result_defects")
+}
+
+// Log keputusan stop produksi — dibuat otomatis saat defect melebihi threshold AQL
+// entity_type + entity_id menunjuk ke assembly_order atau receiving_header yang di-hold
+model production_stops {
+  id               String    @id @default(uuid())
+  entity_type      String    // "assembly_order" | "receiving_header"
+  entity_id        String    // UUID dari entity terkait
+  qc_result_id     String
+  // Alasan stop: kategori mana yang terlewati
+  reason           String    // "critical_exceeded" | "major_exceeded" | "minor_exceeded"
+  // Snapshot jumlah defect saat keputusan dibuat
+  critical_found   Int       @default(0)
+  major_found      Int       @default(0)
+  minor_found      Int       @default(0)
+  // Snapshot threshold AQL saat keputusan dibuat
+  reject_critical  Int
+  reject_major     Int
+  reject_minor     Int
+  triggered_by     String?
+  // Resolusi — diisi saat stop dicabut (override oleh supervisor)
+  resolved_at      DateTime?
+  resolution_notes String?
+  created_at       DateTime  @default(now())
+
+  qc_result      qc_results @relation(fields: [qc_result_id], references: [id], onDelete: Restrict)
+  triggered_user users?     @relation("ProductionStopTriggeredBy", fields: [triggered_by], references: [id], onDelete: SetNull)
+
+  @@index([entity_type, entity_id])
+  @@index([resolved_at])
+  @@map("production_stops")
+}
+
+// =============================================================================
+// SHIPPING
+// =============================================================================
+
+model partners {
+  id           String      @id @default(uuid())
+  name         String
+  type         PartnerType
+  contact_info String?
+  address      String?
+  is_active    Boolean     @default(true)
+  created_at   DateTime    @default(now())
+  updated_at   DateTime    @updatedAt
+  deleted_at   DateTime?
+
+  shipping_from shipping_orders[] @relation("ShippingFromPartner")
+  shipping_to   shipping_orders[] @relation("ShippingToPartner")
+
+  @@index([deleted_at])
+  @@map("partners")
+}
+
+model carriers {
+  id         String    @id @default(uuid())
+  name       String
+  contact    String?
+  phone      String?
+  is_active  Boolean   @default(true)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  orders shipping_orders[]
+
+  @@index([deleted_at])
+  @@map("carriers")
+}
+
+model shipping_orders {
+  id               String         @id @default(uuid())
+  order_number     String         @unique
+  shipping_type    ShippingType   @default(outbound)
+  shipping_from_id String?
+  shipping_to_id   String?
+  carrier_id       String?
+  shipped_by       String?
+  shipped_date     DateTime?
+  status           ShippingStatus @default(pending)
+  notes            String?
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
+  deleted_at       DateTime?
+
+  shipping_from partners? @relation("ShippingFromPartner", fields: [shipping_from_id], references: [id], onDelete: SetNull)
+  shipping_to   partners? @relation("ShippingToPartner", fields: [shipping_to_id], references: [id], onDelete: SetNull)
+  carrier       carriers? @relation(fields: [carrier_id], references: [id], onDelete: SetNull)
+  user          users?    @relation("ShippingHandledBy", fields: [shipped_by], references: [id], onDelete: SetNull)
+
+  items              shipping_items[]
+  tracking_items     tracking[]
+  sample_inspections sample_inspections[]
+
+  @@index([status])
+  @@index([shipped_date])
+  @@index([shipping_type])
+  @@index([deleted_at])
+  @@map("shipping_orders")
+}
+
+model shipping_items {
+  id                String   @id @default(uuid())
+  shipping_order_id String
+  warehouse_id      String?
+  product_id        String?
+  quantity          Int
+  is_serialize      Boolean  @default(false)
+  unit              String?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  order     shipping_orders      @relation(fields: [shipping_order_id], references: [id], onDelete: Cascade)
+  warehouse warehouses?          @relation(fields: [warehouse_id], references: [id], onDelete: SetNull)
+  product   products?            @relation(fields: [product_id], references: [id], onDelete: Restrict)
+  movements shipping_movements[]
+  details   shipping_details[]
+
+  @@map("shipping_items")
+}
+
+model shipping_movements {
+  id               String                @id @default(uuid())
+  shipping_item_id String
+  movement_type    ShippingMovementType?
+  handled_by       String?
+  notes            String?
+  created_at       DateTime              @default(now())
+  updated_at       DateTime              @updatedAt
+
+  item shipping_items @relation(fields: [shipping_item_id], references: [id], onDelete: Cascade)
+  user users?         @relation("ShippingMovementHandledBy", fields: [handled_by], references: [id], onDelete: SetNull)
+
+  @@map("shipping_movements")
+}
+
+model shipping_details {
+  id               String   @id @default(uuid())
+  shipping_item_id String
+  tracking_id      String?
+  batch_id         String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  item     shipping_items @relation(fields: [shipping_item_id], references: [id], onDelete: Cascade)
+  tracking tracking?      @relation(fields: [tracking_id], references: [id], onDelete: SetNull)
+  batch    batches?       @relation(fields: [batch_id], references: [id], onDelete: SetNull)
+
+  @@map("shipping_details")
+}
+
+// =============================================================================
+// ATTACHMENTS
+// =============================================================================
+
+// Tabel generik untuk menyimpan banyak file per entity
+// File disimpan di local disk backend (uploads/), dilayani via endpoint GET /files/:filename
+// Menggantikan: receiving_headers.image_url (single),
+//               receiving_items.documentation_uuid (single),
+//               qc_results.file_path (single)
+// Digunakan oleh: receiving_headers, receiving_items, qc_results, shipping_orders, assembly_orders
+model attachments {
+  id           String   @id @default(uuid())
+  // Polymorphic reference — menunjuk ke entity mana file ini dimiliki
+  entity_type  String   // "receiving_header" | "receiving_item" | "qc_result" | "shipping_order" | "assembly_order"
+  entity_id    String   // UUID dari entity terkait
+  // File info — disimpan di local disk
+  storage_path String   // Path relatif di disk, contoh: "uploads/receiving/2024-03/abc123.jpg"
+  file_url     String   // URL akses publik, contoh: "/files/receiving/2024-03/abc123.jpg"
+  file_name    String   // Nama file asli dari user, contoh: "surat_jalan_001.pdf"
+  file_type    String   // MIME type: "image/jpeg" | "application/pdf" | "image/png"
+  file_size    Int?     // Ukuran file dalam bytes
+  description  String?  // Keterangan bebas, contoh: "Foto surat jalan", "Foto defect"
+  uploaded_by  String?
+
+  uploader users? @relation(fields: [uploaded_by], references: [id], onDelete: SetNull)
+
+  created_at DateTime @default(now())
+
+  @@index([entity_type, entity_id])
+  @@index([uploaded_by])
+  @@map("attachments")
+}
+
+// =============================================================================
+// AUDIT / LOGS
+// =============================================================================
+
+model luhn_validation_logs {
+  id          String   @id @default(uuid())
+  number      String
+  is_valid    Boolean
+  action      String   // 'validate' | 'calculate'
+  check_digit Int?
+  ip_address  String?
+  user_agent  String?
+  created_at  DateTime @default(now())
+
+  @@index([created_at])
+  @@index([number])
+  @@map("luhn_validation_logs")
+}

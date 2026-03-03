@@ -1,0 +1,808 @@
+// =====================================================
+// ENERGY METER - DATABASE DIAGRAM
+// Paste ke: https://dbdiagram.io
+// =====================================================
+
+// =========================
+// ENUMS
+// =========================
+
+Enum assembly_status {
+  pending
+  in_progress
+  partial
+  completed
+  failed
+}
+
+Enum stock_movement_type {
+  IN
+  OUT
+  RESERVED
+  RELEASED
+  PENDING
+  TRANSFER
+  ADJUSTMENT
+}
+
+Enum tracking_status {
+  created
+  on_qc
+  qc_passed
+  qc_failed
+  in_transit
+  stored
+  shipped
+  delivered
+}
+
+Enum tracking_type {
+  receiving
+  assembly
+  shipping
+}
+
+Enum shipping_status {
+  pending
+  shipped
+  delivered
+  canceled
+}
+
+Enum shipping_movement_type {
+  dispatch
+  in_transit
+  delivered
+}
+
+Enum partner_type {
+  vendor
+  client
+}
+
+Enum shipping_type {
+  inbound
+  outbound
+}
+
+Enum pln_code_status {
+  PARTIAL
+  PRINTED
+  MATERIAL_SELECTED
+  COMPLETED
+  LASERED
+  BOXED
+}
+
+Enum box_status {
+  OPEN
+  SEALED
+  SHIPPED
+}
+
+Enum receiving_status {
+  pending
+  accept
+  reject
+}
+
+Enum qc_result_status {
+  pass
+  fail
+  conditional
+}
+
+Enum receiving_item_type {
+  product
+  service
+  material
+}
+
+Enum qc_phase {
+  receiving
+  assembly
+  shipping
+}
+
+Enum warehouse_request_type {
+  inbound_receiving
+  inbound_assembly
+}
+
+Enum warehouse_request_status {
+  pending
+  approved
+  rejected
+}
+
+// =========================
+// AUTHENTICATION
+// =========================
+
+Table users {
+  id          varchar     [pk, note: 'UUID']
+  name        varchar     [not null]
+  username    varchar     [unique]
+  email       varchar     [unique, not null]
+  password    varchar     [not null, note: 'bcrypt/argon2 hashed']
+  department  varchar
+  is_active   boolean     [default: true]
+  created_at  timestamp   [default: `now()`]
+  updated_at  timestamp
+  deleted_at  timestamp   [note: 'Soft delete']
+}
+
+Table permissions {
+  id          varchar     [pk]
+  name        varchar     [unique, not null]
+  created_at  timestamp   [default: `now()`]
+  updated_at  timestamp
+}
+
+Table roles {
+  id          varchar     [pk]
+  name        varchar     [unique, not null]
+  description varchar
+  is_active   boolean     [default: true]
+  created_at  timestamp   [default: `now()`]
+  updated_at  timestamp
+}
+
+Table user_roles {
+  id          varchar     [pk]
+  user_id     varchar     [not null]
+  role_id     varchar     [not null]
+  created_at  timestamp   [default: `now()`]
+
+  indexes {
+    (user_id, role_id) [unique]
+  }
+}
+
+Table user_permissions {
+  id            varchar   [pk]
+  user_id       varchar   [not null]
+  permission_id varchar   [not null]
+
+  indexes {
+    (user_id, permission_id) [unique]
+  }
+}
+
+Table role_permissions {
+  id            varchar   [pk]
+  role_id       varchar   [not null]
+  permission_id varchar   [not null]
+  created_at    timestamp [default: `now()`]
+
+  indexes {
+    (role_id, permission_id) [unique]
+  }
+}
+
+// =========================
+// MASTER DATA
+// =========================
+
+Table suppliers {
+  id            varchar   [pk]
+  code          varchar   [unique, not null]
+  name          varchar   [not null]
+  contact_name  varchar
+  contact_email varchar
+  contact_phone varchar
+  address       varchar
+  is_active     boolean   [default: true]
+  created_at    timestamp [default: `now()`]
+  updated_at    timestamp
+  deleted_at    timestamp
+}
+
+Table product_types {
+  id          varchar   [pk]
+  code        varchar   [unique, not null]
+  name        varchar   [not null]
+  description varchar
+  is_active   boolean   [default: true]
+  created_at  timestamp [default: `now()`]
+  updated_at  timestamp
+  deleted_at  timestamp
+}
+
+Table product_categories {
+  id          varchar   [pk]
+  code        varchar   [unique, not null]
+  name        varchar   [not null]
+  description varchar
+  is_active   boolean   [default: true]
+  created_at  timestamp [default: `now()`]
+  updated_at  timestamp
+  deleted_at  timestamp
+}
+
+Table products {
+  id              varchar   [pk]
+  sap_code        varchar   [unique, not null]
+  name            varchar   [not null]
+  description     varchar
+  product_type_id varchar   [not null, ref: > product_types.id]
+  supplier_id     varchar   [not null, ref: > suppliers.id]
+  is_serialize    boolean   [default: true]
+  qc_product      varchar   [note: 'Kode template QC']
+  image_url       varchar
+  is_active       boolean   [default: true]
+  is_qc           boolean   [default: true]
+  created_at      timestamp [default: `now()`]
+  updated_at      timestamp
+  deleted_at      timestamp
+}
+
+Table product_category_mappings {
+  id          varchar   [pk]
+  product_id  varchar   [not null, ref: > products.id]
+  category_id varchar   [not null, ref: > product_categories.id]
+  created_at  timestamp [default: `now()`]
+  updated_at  timestamp
+
+  indexes {
+    (product_id, category_id) [unique]
+  }
+}
+
+Table product_components {
+  id                   varchar   [pk]
+  parent_product_id    varchar   [not null, ref: > products.id]
+  component_product_id varchar   [not null, ref: > products.id]
+  quantity             int       [default: 1]
+  required             boolean   [default: false]
+  created_at           timestamp [default: `now()`]
+  updated_at           timestamp
+}
+
+Table level_inspections {
+  id           varchar   [pk]
+  product_id   varchar   [not null, ref: > products.id]
+  level        varchar   [not null]
+  aql_critical float     [not null]
+  aql_major    float     [not null]
+  aql_minor    float     [not null]
+  used_defects varchar   [not null, note: 'Comma-separated defect codes']
+  is_active    boolean   [default: true]
+  valid_from   timestamp [default: `now()`]
+  valid_to     timestamp
+  notes        varchar
+  created_at   timestamp [default: `now()`]
+  updated_at   timestamp
+}
+
+// =========================
+// PLN CODE GENERATION
+// =========================
+
+Table material_groups {
+  id          varchar   [pk]
+  code        varchar   [unique, not null, note: 'Max 2 chars']
+  name        varchar   [not null]
+  description text
+  is_active   boolean   [default: true]
+  is_default  boolean   [default: false]
+  created_at  timestamp [default: `now()`]
+  updated_at  timestamp
+}
+
+Table material_sub_groups {
+  id                varchar   [pk]
+  material_group_id varchar   [not null, ref: > material_groups.id]
+  code              varchar   [not null, note: 'Max 2 chars']
+  name              varchar   [not null]
+  description       text
+  is_active         boolean   [default: true]
+  is_default        boolean   [default: false]
+  created_at        timestamp [default: `now()`]
+  updated_at        timestamp
+
+  indexes {
+    (material_group_id, code) [unique]
+  }
+}
+
+Table variants {
+  id          varchar   [pk]
+  code        varchar   [unique, not null, note: 'Max 7 chars']
+  name        varchar   [not null]
+  description text
+  is_active   boolean   [default: true]
+  is_default  boolean   [default: false]
+  created_at  timestamp [default: `now()`]
+  updated_at  timestamp
+}
+
+Table factories {
+  id          varchar   [pk]
+  code        varchar   [unique, not null, note: 'Max 4 chars']
+  name        varchar   [not null]
+  location    varchar
+  description text
+  is_active   boolean   [default: true]
+  is_default  boolean   [default: false]
+  created_at  timestamp [default: `now()`]
+  updated_at  timestamp
+}
+
+Table pln_codes {
+  id                    varchar         [pk]
+  full_code             varchar         [unique, note: 'Max 50 chars, hasil gabungan semua komponen']
+  material_group_id     varchar         [ref: > material_groups.id]
+  material_sub_group_id varchar         [ref: > material_sub_groups.id]
+  variant_id            varchar         [ref: > variants.id]
+  factory_id            varchar         [not null, ref: > factories.id]
+  tag                   varchar         [not null, note: 'Max 4 chars']
+  meter_unique_code     varchar         [not null, note: 'Max 8 chars']
+  check_code            varchar         [not null, note: '1 char - Luhn check digit']
+  status                pln_code_status [default: PARTIAL]
+  assembly_order_id     varchar         [ref: > assembly_orders.id]
+  generated_at          timestamp       [default: `now()`]
+  notes                 text
+  is_lasered            boolean         [default: false]
+  lasered_at            timestamp
+  laser_notes           text
+  is_printed            boolean         [default: false]
+  printed_at            timestamp
+  print_notes           text
+  box_id                varchar         [ref: > boxes.id]
+  created_by_id         varchar         [ref: > users.id]
+  lasered_by_id         varchar         [ref: > users.id]
+  printed_by_id         varchar         [ref: > users.id]
+}
+
+Table meter_code_counters {
+  id           varchar   [pk]
+  factory_id   varchar   [unique, not null, ref: > factories.id]
+  last_counter int       [default: 0]
+  updated_at   timestamp
+}
+
+Table boxes {
+  id                varchar    [pk]
+  box_number        varchar    [unique, not null]
+  assembly_order_id varchar    [not null, ref: > assembly_orders.id]
+  capacity          int        [default: 12]
+  qr_code           text
+  status            box_status [default: OPEN]
+  created_at        timestamp  [default: `now()`]
+  sealed_at         timestamp
+  notes             text
+  created_by_id     varchar    [ref: > users.id]
+  sealed_by_id      varchar    [ref: > users.id]
+}
+
+Table box_counters {
+  id                varchar   [pk]
+  assembly_order_id varchar   [unique, not null, ref: > assembly_orders.id]
+  last_counter      int       [default: 0]
+  updated_at        timestamp
+}
+
+// =========================
+// WAREHOUSE
+// =========================
+
+Table warehouses {
+  id         varchar   [pk]
+  code       varchar   [unique, not null]
+  name       varchar   [not null]
+  location   varchar   [not null]
+  is_active  boolean   [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table stock_units {
+  id                varchar   [pk]
+  warehouse_id      varchar   [not null, ref: > warehouses.id]
+  product_id        varchar   [not null, ref: > products.id]
+  quantity          int       [default: 0, note: 'Stok aktual tersedia']
+  quantity_reserved int       [default: 0, note: 'Di-reserve untuk assembly']
+  quantity_pending  int       [default: 0, note: 'Menunggu warehouse_request approved']
+  created_at        timestamp [default: `now()`]
+  updated_at        timestamp
+
+  indexes {
+    (warehouse_id, product_id) [unique]
+  }
+}
+
+Table stock_transactions {
+  id             varchar            [pk]
+  stock_unit_id  varchar            [not null, ref: > stock_units.id]
+  performed_by   varchar            [ref: > users.id]
+  movement_type  stock_movement_type [not null]
+  quantity       int                [not null, note: 'Selalu positif']
+  reference_id   varchar            [note: 'ID sumber: assembly_order_id / receiving_header_id / shipping_order_id']
+  reference_type varchar            [note: '"assembly_order" | "receiving_header" | "shipping_order"']
+  movement_date  timestamp          [default: `now()`]
+  notes          varchar
+  tracking_id    varchar            [ref: > tracking.id]
+  created_at     timestamp          [default: `now()`]
+  updated_at     timestamp
+}
+
+Table warehouse_requests {
+  id                  varchar                 [pk]
+  request_type        warehouse_request_type  [not null]
+  warehouse_id        varchar                 [not null, ref: > warehouses.id]
+  requested_by        varchar                 [not null, ref: > users.id]
+  approved_by         varchar                 [ref: > users.id]
+  status              warehouse_request_status [default: pending]
+  notes               varchar
+  approved_at         timestamp
+  created_at          timestamp               [default: `now()`]
+  updated_at          timestamp
+  receiving_header_id varchar                 [ref: > receiving_headers.id, note: 'Diisi jika inbound_receiving']
+  assembly_order_id   varchar                 [ref: > assembly_orders.id, note: 'Diisi jika inbound_assembly']
+}
+
+// =========================
+// RECEIVING
+// =========================
+
+Table batches {
+  id          varchar   [pk]
+  code        varchar   [unique, not null]
+  supplier_id varchar   [ref: > suppliers.id]
+  description varchar
+  notes       varchar
+  created_at  timestamp [default: `now()`]
+  updated_at  timestamp
+  deleted_at  timestamp
+}
+
+Table purchase_orders {
+  id         varchar   [pk]
+  po_number  varchar   [unique, not null]
+  order_date timestamp [not null]
+  notes      varchar
+  user_id    varchar   [ref: > users.id]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table receiving_headers {
+  id                varchar         [pk]
+  purchase_order_id varchar         [not null, ref: > purchase_orders.id]
+  assembly_order_id varchar         [ref: > assembly_orders.id, note: 'Opsional: jika receiving terkait assembly order']
+  gr_number         varchar         [unique, not null]
+  notes             varchar
+  image_url         varchar
+  received_by       varchar         [not null, ref: > users.id]
+  received_date     timestamp       [not null]
+  status            receiving_status [default: pending]
+  batch_id          varchar         [not null, ref: > batches.id]
+  location          varchar         [not null]
+  created_at        timestamp       [default: `now()`]
+  updated_at        timestamp
+  deleted_at        timestamp
+}
+
+Table receiving_items {
+  id                  varchar             [pk]
+  receiving_header_id varchar             [not null, ref: > receiving_headers.id]
+  product_id          varchar             [not null, ref: > products.id]
+  is_serialized       boolean             [not null]
+  quantity            int                 [not null]
+  notes               varchar
+  item_type           receiving_item_type [default: product]
+  documentation_uuid  varchar
+  created_at          timestamp           [default: `now()`]
+  updated_at          timestamp
+}
+
+Table serial_stagings {
+  id                varchar   [pk]
+  receiving_item_id varchar   [not null, ref: > receiving_items.id]
+  serial_number     varchar   [unique, not null]
+  created_at        timestamp [default: `now()`]
+  updated_at        timestamp
+}
+
+// =========================
+// ASSEMBLY
+// =========================
+
+Table pln_orders {
+  id           varchar   [pk]
+  order_number varchar   [unique, not null]
+  order_date   timestamp [not null]
+  deadline     timestamp [not null]
+  quantity     int       [not null]
+  created_at   timestamp [default: `now()`]
+  updated_at   timestamp
+  deleted_at   timestamp
+}
+
+Table assembly_orders {
+  id           varchar         [pk]
+  order_number varchar         [unique, not null]
+  product_id   varchar         [not null, ref: > products.id]
+  pln_order_id varchar         [ref: > pln_orders.id]
+  request_by   varchar         [ref: > users.id]
+  quantity     int             [not null]
+  status       assembly_status [default: pending]
+  notes        varchar
+  started_at   timestamp       [note: 'Timestamp mulai dikerjakan']
+  completed_at timestamp       [note: 'Timestamp selesai']
+  created_at   timestamp       [default: `now()`]
+  updated_at   timestamp
+  deleted_at   timestamp
+}
+
+Table assembly_order_items {
+  id                varchar   [pk]
+  assembly_order_id varchar   [not null, ref: > assembly_orders.id]
+  product_id        varchar   [not null, ref: > products.id]
+  qty_request       int       [not null]
+  qty_confirmed     int       [default: 0]
+  qty_fulfilled     int       [default: 0]
+  required          boolean   [default: false]
+  is_serialized     boolean   [default: false]
+  created_at        timestamp [default: `now()`]
+  updated_at        timestamp
+}
+
+Table assembly_order_confirmations {
+  id                varchar         [pk]
+  assembly_order_id varchar         [not null, ref: > assembly_orders.id]
+  confirmed_by      varchar         [not null, ref: > users.id]
+  status            assembly_status [not null]
+  confirmed_at      timestamp       [default: `now()`]
+  note              varchar
+}
+
+Table assembly_order_item_confirmations {
+  id                   varchar   [pk]
+  assembly_order_id    varchar   [not null, ref: > assembly_orders.id]
+  order_item_id        varchar   [not null, ref: > assembly_order_items.id]
+  product_id           varchar   [not null, ref: > products.id]
+  qty_confirmed        int       [not null]
+  note                 varchar
+  stock_unit_id        varchar   [ref: > stock_units.id, note: 'Stok yang dipesan']
+  stock_transaction_id varchar   [ref: > stock_transactions.id, note: 'Transaksi RESERVED yang dibuat']
+}
+
+// =========================
+// TRACKING
+// =========================
+
+Table tracking {
+  id                varchar        [pk]
+  code_item         varchar        [unique, not null, note: 'Kode unik per item']
+  is_serialize      boolean        [not null]
+  serial_number     varchar        [unique]
+  product_id        varchar        [not null, ref: > products.id]
+  batch_id          varchar        [ref: > batches.id]
+  tracking_type     tracking_type  [default: receiving]
+  status            tracking_status [default: created]
+  original_quantity int            [default: 1]
+  current_quantity  int            [default: 1]
+  consumed_quantity int            [default: 0]
+  pln_code_id       varchar        [ref: > pln_codes.id]
+  receiving_item_id varchar        [ref: > receiving_items.id]
+  assembly_id       varchar        [ref: > assembly_orders.id]
+  shipping_id       varchar        [ref: > shipping_orders.id]
+  pln_order_id      varchar        [ref: > pln_orders.id]
+  notes             varchar
+  created_at        timestamp      [default: `now()`]
+  updated_at        timestamp
+  deleted_at        timestamp
+}
+
+Table qc_results {
+  id                   varchar         [pk]
+  tracking_id          varchar         [not null, ref: > tracking.id]
+  inspector_by         varchar         [not null, ref: > users.id]
+  inspection_date      timestamp       [default: `now()`]
+  result               qc_result_status [not null]
+  qc_name              varchar         [not null, note: 'Nama template/checklist QC']
+  qc_id                varchar         [not null, note: 'Kode internal checklist QC']
+  qc_place             varchar         [default: 'Unknown']
+  notes                varchar
+  file_path            varchar         [note: 'Path ke foto/dokumen hasil QC']
+  sample_inspection_id varchar         [ref: > sample_inspections.id, note: 'Rencana inspeksi yang menghasilkan ini']
+  created_at           timestamp       [default: `now()`]
+  updated_at           timestamp
+}
+
+Table assembly_components {
+  id                    varchar   [pk]
+  parent_tracking_id    varchar   [not null, ref: > tracking.id]
+  component_tracking_id varchar   [not null, ref: > tracking.id]
+  quantity              int       [not null]
+  created_at            timestamp [default: `now()`]
+  updated_at            timestamp
+}
+
+Table sample_inspections {
+  id                varchar   [pk]
+  qc_phase          qc_phase  [default: receiving, note: 'Konteks QC: receiving/assembly/shipping']
+  receiving_item_id varchar   [ref: > receiving_items.id]
+  assembly_id       varchar   [ref: > assembly_orders.id]
+  shipping_id       varchar   [ref: > shipping_orders.id]
+  inspection_level  varchar   [not null]
+  aql_critical      float     [not null]
+  aql_sample        float     [not null]
+  aql_accept        float     [not null]
+  aql_reject        float     [not null]
+  qc_id             varchar   [default: 'default']
+  used_defect       varchar
+  notes             varchar
+  created_at        timestamp [default: `now()`]
+  updated_at        timestamp
+}
+
+// =========================
+// SHIPPING
+// =========================
+
+Table partners {
+  id           varchar      [pk]
+  name         varchar      [not null]
+  type         partner_type [not null]
+  contact_info varchar
+  address      varchar
+  is_active    boolean      [default: true]
+  created_at   timestamp    [default: `now()`]
+  updated_at   timestamp
+  deleted_at   timestamp
+}
+
+Table carriers {
+  id         varchar   [pk]
+  name       varchar   [not null]
+  contact    varchar
+  phone      varchar
+  is_active  boolean   [default: true]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table shipping_orders {
+  id               varchar         [pk]
+  order_number     varchar         [unique, not null]
+  shipping_type    shipping_type   [default: outbound]
+  shipping_from_id varchar         [ref: > partners.id]
+  shipping_to_id   varchar         [ref: > partners.id]
+  carrier_id       varchar         [ref: > carriers.id]
+  shipped_by       varchar         [ref: > users.id]
+  shipped_date     timestamp
+  status           shipping_status [default: pending]
+  notes            varchar
+  created_at       timestamp       [default: `now()`]
+  updated_at       timestamp
+  deleted_at       timestamp
+}
+
+Table shipping_items {
+  id                varchar   [pk]
+  shipping_order_id varchar   [not null, ref: > shipping_orders.id]
+  warehouse_id      varchar   [ref: > warehouses.id]
+  product_id        varchar   [ref: > products.id]
+  quantity          int       [not null]
+  is_serialize      boolean   [default: false]
+  unit              varchar
+  created_at        timestamp [default: `now()`]
+  updated_at        timestamp
+}
+
+Table shipping_movements {
+  id               varchar               [pk]
+  shipping_item_id varchar               [not null, ref: > shipping_items.id]
+  movement_type    shipping_movement_type
+  handled_by       varchar               [ref: > users.id]
+  notes            varchar
+  created_at       timestamp             [default: `now()`]
+  updated_at       timestamp
+}
+
+Table shipping_details {
+  id               varchar   [pk]
+  shipping_item_id varchar   [not null, ref: > shipping_items.id]
+  tracking_id      varchar   [ref: > tracking.id]
+  batch_id         varchar   [ref: > batches.id]
+  created_at       timestamp [default: `now()`]
+  updated_at       timestamp
+}
+
+// =========================
+// AUDIT / LOGS
+// =========================
+
+Table luhn_validation_logs {
+  id          varchar   [pk]
+  number      varchar   [not null]
+  is_valid    boolean   [not null]
+  action      varchar   [not null, note: '"validate" | "calculate"']
+  check_digit int
+  ip_address  varchar
+  user_agent  varchar
+  created_at  timestamp [default: `now()`]
+}
+
+// =========================
+// TABLE GROUPS
+// =========================
+
+TableGroup Authentication {
+  users
+  permissions
+  roles
+  user_roles
+  user_permissions
+  role_permissions
+}
+
+TableGroup MasterData {
+  suppliers
+  product_types
+  product_categories
+  products
+  product_category_mappings
+  product_components
+  level_inspections
+}
+
+TableGroup PlnCodeGeneration {
+  material_groups
+  material_sub_groups
+  variants
+  factories
+  pln_codes
+  meter_code_counters
+  boxes
+  box_counters
+}
+
+TableGroup Warehouse {
+  warehouses
+  stock_units
+  stock_transactions
+  warehouse_requests
+}
+
+TableGroup Receiving {
+  batches
+  purchase_orders
+  receiving_headers
+  receiving_items
+  serial_stagings
+}
+
+TableGroup Assembly {
+  pln_orders
+  assembly_orders
+  assembly_order_items
+  assembly_order_confirmations
+  assembly_order_item_confirmations
+}
+
+TableGroup Tracking {
+  tracking
+  qc_results
+  assembly_components
+  sample_inspections
+}
+
+TableGroup Shipping {
+  partners
+  carriers
+  shipping_orders
+  shipping_items
+  shipping_movements
+  shipping_details
+}
+
+TableGroup AuditLogs {
+  luhn_validation_logs
+}
