@@ -1,0 +1,1472 @@
+{
+  "info": {
+    "name": "Energy Meter API",
+    "_postman_id": "energy-meter-api-v1",
+    "description": "Unified backend — Auth, Product Master Data, QC, Receiving, Assembly, PLN Code",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",             "value": "http://localhost:3020/api" },
+    { "key": "token",                "value": "" },
+    { "key": "user_id",              "value": "" },
+    { "key": "role_id",              "value": "" },
+    { "key": "permission_id",        "value": "" },
+    { "key": "product_id",           "value": "" },
+    { "key": "supplier_id",          "value": "" },
+    { "key": "product_type_id",      "value": "" },
+    { "key": "product_category_id",  "value": "" },
+    { "key": "level_inspection_id",  "value": "" },
+    { "key": "defect_type_id",       "value": "" },
+    { "key": "qc_template_id",       "value": "" },
+    { "key": "purchase_order_id",    "value": "" },
+    { "key": "batch_id",             "value": "" },
+    { "key": "receiving_header_id",  "value": "" },
+    { "key": "receiving_item_id",    "value": "" },
+    { "key": "assembly_order_id",    "value": "" },
+    { "key": "pln_order_id",         "value": "" },
+    { "key": "warehouse_request_id", "value": "" },
+    { "key": "material_group_id",    "value": "" },
+    { "key": "material_sub_group_id","value": "" },
+    { "key": "variant_id",           "value": "" },
+    { "key": "factory_id",           "value": "" },
+    { "key": "pln_code_id",          "value": "" },
+    { "key": "box_id",               "value": "" }
+  ],
+  "item": [
+
+    {
+      "name": "🔧 Health Check",
+      "item": [
+        {
+          "name": "GET Health",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "POST Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.success && json.data && json.data.token) {",
+                  "    pm.collectionVariables.set('token', json.data.token);",
+                  "    console.log('Token saved:', json.data.token.substring(0,30) + '...');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"login\": \"admin\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth","login"] }
+          }
+        },
+        {
+          "name": "POST Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin User\",\n  \"username\": \"admin\",\n  \"email\": \"admin@example.com\",\n  \"password\": \"password123\",\n  \"department\": \"IT\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth","register"] }
+          }
+        },
+        {
+          "name": "GET Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth","me"] }
+          }
+        },
+        {
+          "name": "PATCH Change Password",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"password123\",\n  \"new_password\": \"newpassword123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/change-password", "host": ["{{base_url}}"], "path": ["auth","change-password"] }
+          }
+        },
+        {
+          "name": "👥 Users",
+          "item": [
+            {
+              "name": "GET All Users",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": {
+                  "raw": "{{base_url}}/auth/users?page=1&limit=10",
+                  "host": ["{{base_url}}"], "path": ["auth","users"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "10" },
+                    { "key": "search", "value": "", "disabled": true }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "GET User By ID",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/auth/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["auth","users","{{user_id}}"] }
+              }
+            },
+            {
+              "name": "POST Create User",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "if (json.success && json.data) pm.collectionVariables.set('user_id', json.data.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"John Doe\",\n  \"username\": \"johndoe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"password123\",\n  \"department\": \"QC\",\n  \"is_active\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/users", "host": ["{{base_url}}"], "path": ["auth","users"] }
+              }
+            },
+            {
+              "name": "PATCH Update User",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"John Doe Updated\",\n  \"department\": \"Production\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["auth","users","{{user_id}}"] }
+              }
+            },
+            {
+              "name": "PATCH Reset Password",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"new_password\": \"resetpassword123\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/users/{{user_id}}/reset-password", "host": ["{{base_url}}"], "path": ["auth","users","{{user_id}}","reset-password"] }
+              }
+            },
+            {
+              "name": "PUT Assign Roles",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role_ids\": [\"{{role_id}}\"]\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/users/{{user_id}}/roles", "host": ["{{base_url}}"], "path": ["auth","users","{{user_id}}","roles"] }
+              }
+            },
+            {
+              "name": "PUT Assign Permissions",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"permission_ids\": [\"{{permission_id}}\"]\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/users/{{user_id}}/permissions", "host": ["{{base_url}}"], "path": ["auth","users","{{user_id}}","permissions"] }
+              }
+            },
+            {
+              "name": "DELETE User",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/auth/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["auth","users","{{user_id}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "🏷️ Roles",
+          "item": [
+            {
+              "name": "GET All Roles",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/auth/roles", "host": ["{{base_url}}"], "path": ["auth","roles"] }
+              }
+            },
+            {
+              "name": "GET Role By ID",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/auth/roles/{{role_id}}", "host": ["{{base_url}}"], "path": ["auth","roles","{{role_id}}"] }
+              }
+            },
+            {
+              "name": "POST Create Role",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "if (json.success && json.data) pm.collectionVariables.set('role_id', json.data.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"admin\",\n  \"description\": \"Administrator role\",\n  \"is_active\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/roles", "host": ["{{base_url}}"], "path": ["auth","roles"] }
+              }
+            },
+            {
+              "name": "PATCH Update Role",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"description\": \"Updated description\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/roles/{{role_id}}", "host": ["{{base_url}}"], "path": ["auth","roles","{{role_id}}"] }
+              }
+            },
+            {
+              "name": "PUT Assign Permissions to Role",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"permission_ids\": [\"{{permission_id}}\"]\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/roles/{{role_id}}/permissions", "host": ["{{base_url}}"], "path": ["auth","roles","{{role_id}}","permissions"] }
+              }
+            },
+            {
+              "name": "DELETE Role",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/auth/roles/{{role_id}}", "host": ["{{base_url}}"], "path": ["auth","roles","{{role_id}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "🔑 Permissions",
+          "item": [
+            {
+              "name": "GET All Permissions",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/auth/permissions", "host": ["{{base_url}}"], "path": ["auth","permissions"] }
+              }
+            },
+            {
+              "name": "POST Create Permission",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "if (json.success && json.data) pm.collectionVariables.set('permission_id', json.data.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"products.create\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/permissions", "host": ["{{base_url}}"], "path": ["auth","permissions"] }
+              }
+            },
+            {
+              "name": "PATCH Update Permission",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"products.create.updated\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/auth/permissions/{{permission_id}}", "host": ["{{base_url}}"], "path": ["auth","permissions","{{permission_id}}"] }
+              }
+            },
+            {
+              "name": "DELETE Permission",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/auth/permissions/{{permission_id}}", "host": ["{{base_url}}"], "path": ["auth","permissions","{{permission_id}}"] }
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "📦 Product Master Data",
+      "item": [
+        {
+          "name": "Products",
+          "item": [
+            {
+              "name": "GET All Products",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": {
+                  "raw": "{{base_url}}/products?page=1&limit=10",
+                  "host": ["{{base_url}}"], "path": ["products"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "10" },
+                    { "key": "search", "value": "", "disabled": true },
+                    { "key": "product_type_id", "value": "", "disabled": true },
+                    { "key": "supplier_id", "value": "", "disabled": true },
+                    { "key": "is_active", "value": "true", "disabled": true },
+                    { "key": "is_serialize", "value": "true", "disabled": true },
+                    { "key": "is_qc", "value": "true", "disabled": true }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "GET Product By ID",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/products/{{product_id}}", "host": ["{{base_url}}"], "path": ["products","{{product_id}}"] }
+              }
+            },
+            {
+              "name": "POST Create Product (with categories + level inspection)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "if (json.success && json.data) pm.collectionVariables.set('product_id', json.data.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"sap_code\": \"SAP-001\",\n  \"name\": \"Meter Listrik 900VA\",\n  \"description\": \"Smart meter single phase 900VA\",\n  \"product_type_id\": \"{{product_type_id}}\",\n  \"supplier_id\": \"{{supplier_id}}\",\n  \"is_serialize\": true,\n  \"is_qc\": true,\n  \"is_active\": true,\n  \"qc_product\": \"QC-METER-001\",\n  \"category_ids\": [\"{{product_category_id}}\"],\n  \"level_inspections\": [\n    {\n      \"level\": \"II\",\n      \"aql_critical\": 0.0,\n      \"aql_major\": 1.0,\n      \"aql_minor\": 2.5,\n      \"sample_size\": 20,\n      \"accept_critical\": 0,\n      \"accept_major\": 1,\n      \"accept_minor\": 3,\n      \"reject_critical\": 1,\n      \"reject_major\": 2,\n      \"reject_minor\": 4,\n      \"qc_template_id\": \"{{qc_template_id}}\",\n      \"is_active\": true,\n      \"notes\": \"Standard inspection level II\"\n    }\n  ]\n}"
+                },
+                "url": { "raw": "{{base_url}}/products", "host": ["{{base_url}}"], "path": ["products"] }
+              }
+            },
+            {
+              "name": "PATCH Update Product",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Meter Listrik 900VA Updated\",\n  \"is_active\": true,\n  \"category_ids\": [\"{{product_category_id}}\"]\n}"
+                },
+                "url": { "raw": "{{base_url}}/products/{{product_id}}", "host": ["{{base_url}}"], "path": ["products","{{product_id}}"] }
+              }
+            },
+            {
+              "name": "DELETE Product",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/products/{{product_id}}", "host": ["{{base_url}}"], "path": ["products","{{product_id}}"] }
+              }
+            },
+            {
+              "name": "GET Level Inspections",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/products/{{product_id}}/level-inspections", "host": ["{{base_url}}"], "path": ["products","{{product_id}}","level-inspections"] }
+              }
+            },
+            {
+              "name": "POST Add Level Inspection",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "if (json.success && json.data) pm.collectionVariables.set('level_inspection_id', json.data.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"level\": \"III\",\n  \"aql_critical\": 0.0,\n  \"aql_major\": 0.65,\n  \"aql_minor\": 1.5,\n  \"sample_size\": 32,\n  \"accept_critical\": 0,\n  \"accept_major\": 0,\n  \"accept_minor\": 1,\n  \"reject_critical\": 1,\n  \"reject_major\": 1,\n  \"reject_minor\": 2,\n  \"qc_template_id\": \"{{qc_template_id}}\",\n  \"notes\": \"Strict inspection level III\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/products/{{product_id}}/level-inspections", "host": ["{{base_url}}"], "path": ["products","{{product_id}}","level-inspections"] }
+              }
+            },
+            {
+              "name": "PATCH Update Level Inspection",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{token}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"aql_major\": 1.0,\n  \"sample_size\": 20,\n  \"is_active\": false\n}"
+                },
+                "url": { "raw": "{{base_url}}/products/{{product_id}}/level-inspections/{{level_inspection_id}}", "host": ["{{base_url}}"], "path": ["products","{{product_id}}","level-inspections","{{level_inspection_id}}"] }
+              }
+            },
+            {
+              "name": "DELETE Level Inspection",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/products/{{product_id}}/level-inspections/{{level_inspection_id}}", "host": ["{{base_url}}"], "path": ["products","{{product_id}}","level-inspections","{{level_inspection_id}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Suppliers",
+          "item": [
+            {
+              "name": "GET All Suppliers",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}/master/suppliers?page=1&limit=10",
+                  "host": ["{{base_url}}"], "path": ["master","suppliers"],
+                  "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }, { "key": "search", "value": "", "disabled": true }]
+                }
+              }
+            },
+            {
+              "name": "GET Supplier By ID",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/master/suppliers/{{supplier_id}}", "host": ["{{base_url}}"], "path": ["master","suppliers","{{supplier_id}}"] }
+              }
+            },
+            {
+              "name": "POST Create Supplier",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "if (json.success && json.data) pm.collectionVariables.set('supplier_id', json.data.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"SUP-001\",\n  \"name\": \"PT Supplier Indonesia\",\n  \"contact_name\": \"Budi Santoso\",\n  \"contact_email\": \"budi@supplier.com\",\n  \"contact_phone\": \"021-12345678\",\n  \"address\": \"Jl. Industri No. 1, Jakarta\",\n  \"is_active\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/master/suppliers", "host": ["{{base_url}}"], "path": ["master","suppliers"] }
+              }
+            },
+            {
+              "name": "PATCH Update Supplier",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"contact_phone\": \"021-99999999\",\n  \"address\": \"Jl. Baru No. 5, Jakarta\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/master/suppliers/{{supplier_id}}", "host": ["{{base_url}}"], "path": ["master","suppliers","{{supplier_id}}"] }
+              }
+            },
+            {
+              "name": "DELETE Supplier",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/master/suppliers/{{supplier_id}}", "host": ["{{base_url}}"], "path": ["master","suppliers","{{supplier_id}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Product Types",
+          "item": [
+            {
+              "name": "GET All Product Types",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/master/product-types", "host": ["{{base_url}}"], "path": ["master","product-types"] }
+              }
+            },
+            {
+              "name": "POST Create Product Type",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "if (json.success && json.data) pm.collectionVariables.set('product_type_id', json.data.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"METER\",\n  \"name\": \"Meter Listrik\",\n  \"description\": \"Semua jenis meter listrik\",\n  \"is_active\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/master/product-types", "host": ["{{base_url}}"], "path": ["master","product-types"] }
+              }
+            },
+            {
+              "name": "PATCH Update Product Type",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"description\": \"Updated description\"\n}" },
+                "url": { "raw": "{{base_url}}/master/product-types/{{product_type_id}}", "host": ["{{base_url}}"], "path": ["master","product-types","{{product_type_id}}"] }
+              }
+            },
+            {
+              "name": "DELETE Product Type",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/master/product-types/{{product_type_id}}", "host": ["{{base_url}}"], "path": ["master","product-types","{{product_type_id}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Product Categories",
+          "item": [
+            {
+              "name": "GET All Product Categories",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/master/product-categories", "host": ["{{base_url}}"], "path": ["master","product-categories"] }
+              }
+            },
+            {
+              "name": "POST Create Product Category",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "if (json.success && json.data) pm.collectionVariables.set('product_category_id', json.data.id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"CAT-SINGLE\",\n  \"name\": \"Single Phase\",\n  \"description\": \"Meter listrik 1 phase\",\n  \"is_active\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/master/product-categories", "host": ["{{base_url}}"], "path": ["master","product-categories"] }
+              }
+            },
+            {
+              "name": "PATCH Update Product Category",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"description\": \"Meter listrik 1 phase updated\"\n}" },
+                "url": { "raw": "{{base_url}}/master/product-categories/{{product_category_id}}", "host": ["{{base_url}}"], "path": ["master","product-categories","{{product_category_id}}"] }
+              }
+            },
+            {
+              "name": "DELETE Product Category",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/master/product-categories/{{product_category_id}}", "host": ["{{base_url}}"], "path": ["master","product-categories","{{product_category_id}}"] }
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "🔍 QC Master Data",
+      "item": [
+        {
+          "name": "Defect Types",
+          "item": [
+            {
+              "name": "GET All Defect Types",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/defect-types?page=1&limit=10", "host": ["{{base_url}}"], "path": ["defect-types"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"10"}] }
+              }
+            },
+            {
+              "name": "GET Defect Type By ID",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/defect-types/{{defect_type_id}}", "host": ["{{base_url}}"], "path": ["defect-types","{{defect_type_id}}"] }
+              }
+            },
+            {
+              "name": "POST Create Defect Type",
+              "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('defect_type_id', json.data.id);"]}}],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"SCRATCH\",\n  \"name\": \"Goresan\",\n  \"category\": \"minor\",\n  \"description\": \"Goresan pada permukaan produk\",\n  \"is_active\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/defect-types", "host": ["{{base_url}}"], "path": ["defect-types"] }
+              }
+            },
+            {
+              "name": "PATCH Update Defect Type",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"category\": \"major\"\n}" },
+                "url": { "raw": "{{base_url}}/defect-types/{{defect_type_id}}", "host": ["{{base_url}}"], "path": ["defect-types","{{defect_type_id}}"] }
+              }
+            },
+            {
+              "name": "DELETE Defect Type",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/defect-types/{{defect_type_id}}", "host": ["{{base_url}}"], "path": ["defect-types","{{defect_type_id}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "QC Templates",
+          "item": [
+            {
+              "name": "GET All QC Templates",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/qc-templates", "host": ["{{base_url}}"], "path": ["qc-templates"] }
+              }
+            },
+            {
+              "name": "POST Create QC Template",
+              "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('qc_template_id', json.data.id);"]}}],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"QC-RCV-METER\",\n  \"name\": \"QC Receiving Meter Listrik\",\n  \"qc_phase\": \"receiving\",\n  \"display_order\": 1,\n  \"is_active\": true,\n  \"checklist_items\": [\n    { \"label\": \"Cek kondisi fisik\", \"is_required\": true, \"display_order\": 1 },\n    { \"label\": \"Cek nomor seri\", \"is_required\": true, \"display_order\": 2 },\n    { \"label\": \"Cek segel\", \"is_required\": true, \"display_order\": 3 }\n  ]\n}"
+                },
+                "url": { "raw": "{{base_url}}/qc-templates", "host": ["{{base_url}}"], "path": ["qc-templates"] }
+              }
+            },
+            {
+              "name": "GET QC Template By ID",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/qc-templates/{{qc_template_id}}", "host": ["{{base_url}}"], "path": ["qc-templates","{{qc_template_id}}"] }
+              }
+            },
+            {
+              "name": "PATCH Update QC Template",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"name\": \"QC Receiving Meter Updated\"\n}" },
+                "url": { "raw": "{{base_url}}/qc-templates/{{qc_template_id}}", "host": ["{{base_url}}"], "path": ["qc-templates","{{qc_template_id}}"] }
+              }
+            },
+            {
+              "name": "DELETE QC Template",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{base_url}}/qc-templates/{{qc_template_id}}", "host": ["{{base_url}}"], "path": ["qc-templates","{{qc_template_id}}"] }
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "🚚 Flow 1 — Receiving",
+      "item": [
+        {
+          "name": "Purchase Orders",
+          "item": [
+            {
+              "name": "GET All Purchase Orders",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/purchase-orders?page=1&limit=10", "host": ["{{base_url}}"], "path": ["purchase-orders"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"10"}] }
+              }
+            },
+            {
+              "name": "POST Create Purchase Order",
+              "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('purchase_order_id', json.data.id);"]}}],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"po_number\": \"PO-2024-001\",\n  \"supplier_id\": \"{{supplier_id}}\",\n  \"order_date\": \"2024-01-15\",\n  \"expected_delivery\": \"2024-02-01\",\n  \"notes\": \"PO pertama tahun 2024\",\n  \"created_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/purchase-orders", "host": ["{{base_url}}"], "path": ["purchase-orders"] }
+              }
+            },
+            {
+              "name": "GET Purchase Order By ID",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/purchase-orders/{{purchase_order_id}}", "host": ["{{base_url}}"], "path": ["purchase-orders","{{purchase_order_id}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Batches",
+          "item": [
+            {
+              "name": "GET All Batches",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/batches?page=1&limit=10", "host": ["{{base_url}}"], "path": ["batches"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"10"}] }
+              }
+            },
+            {
+              "name": "POST Create Batch",
+              "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('batch_id', json.data.id);"]}}],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"batch_number\": \"BATCH-2024-001\",\n  \"purchase_order_id\": \"{{purchase_order_id}}\",\n  \"supplier_id\": \"{{supplier_id}}\",\n  \"received_date\": \"2024-01-20\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/batches", "host": ["{{base_url}}"], "path": ["batches"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Receiving Headers",
+          "item": [
+            {
+              "name": "GET All Receiving Headers",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/receiving-headers?page=1&limit=10", "host": ["{{base_url}}"], "path": ["receiving-headers"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"10"}] }
+              }
+            },
+            {
+              "name": "POST Create Receiving Header",
+              "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('receiving_header_id', json.data.id);"]}}],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"batch_id\": \"{{batch_id}}\",\n  \"received_by_id\": \"{{user_id}}\",\n  \"notes\": \"Penerimaan barang batch pertama\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/receiving-headers", "host": ["{{base_url}}"], "path": ["receiving-headers"] }
+              }
+            },
+            {
+              "name": "GET Receiving Header By ID",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/receiving-headers/{{receiving_header_id}}", "host": ["{{base_url}}"], "path": ["receiving-headers","{{receiving_header_id}}"] }
+              }
+            },
+            {
+              "name": "POST Add Items (Bulk)",
+              "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data && json.data[0]) pm.collectionVariables.set('receiving_item_id', json.data[0].id);"]}}],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"items\": [\n    {\n      \"product_id\": \"{{product_id}}\",\n      \"quantity\": 100,\n      \"unit\": \"pcs\",\n      \"notes\": \"Lot A\"\n    }\n  ]\n}"
+                },
+                "url": { "raw": "{{base_url}}/receiving-headers/{{receiving_header_id}}/items", "host": ["{{base_url}}"], "path": ["receiving-headers","{{receiving_header_id}}","items"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Serial Stagings (Scan)",
+          "item": [
+            {
+              "name": "POST Scan Serial",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"serial_number\": \"SN-123456789\",\n  \"scanned_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/receiving-items/{{receiving_item_id}}/serials/scan", "host": ["{{base_url}}"], "path": ["receiving-items","{{receiving_item_id}}","serials","scan"] }
+              }
+            },
+            {
+              "name": "POST Scan Bulk Serials",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"serial_numbers\": [\"SN-001\",\"SN-002\",\"SN-003\"],\n  \"scanned_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/receiving-items/{{receiving_item_id}}/serials/scan-bulk", "host": ["{{base_url}}"], "path": ["receiving-items","{{receiving_item_id}}","serials","scan-bulk"] }
+              }
+            },
+            {
+              "name": "GET Count Status",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/receiving-items/{{receiving_item_id}}/serials/count-status", "host": ["{{base_url}}"], "path": ["receiving-items","{{receiving_item_id}}","serials","count-status"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "QC Results",
+          "item": [
+            {
+              "name": "POST Create QC Result",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"receiving_header_id\": \"{{receiving_header_id}}\",\n  \"product_id\": \"{{product_id}}\",\n  \"level_inspection_id\": \"{{level_inspection_id}}\",\n  \"inspector_id\": \"{{user_id}}\",\n  \"inspected_quantity\": 20,\n  \"defects\": [\n    {\n      \"defect_type_id\": \"{{defect_type_id}}\",\n      \"quantity\": 1,\n      \"notes\": \"Goresan kecil\"\n    }\n  ]\n}"
+                },
+                "url": { "raw": "{{base_url}}/qc-results", "host": ["{{base_url}}"], "path": ["qc-results"] }
+              }
+            },
+            {
+              "name": "GET QC Results",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/qc-results?page=1&limit=10", "host": ["{{base_url}}"], "path": ["qc-results"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"10"}] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Warehouse Requests",
+          "item": [
+            {
+              "name": "GET All Warehouse Requests",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/warehouse-requests?page=1&limit=10", "host": ["{{base_url}}"], "path": ["warehouse-requests"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"10"}] }
+              }
+            },
+            {
+              "name": "POST Approve Inbound Receiving",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"approved_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/warehouse-requests/{{warehouse_request_id}}/approve", "host": ["{{base_url}}"], "path": ["warehouse-requests","{{warehouse_request_id}}","approve"] }
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "🏭 Flow 2 — Assembly",
+      "item": [
+        {
+          "name": "GET All Assembly Orders",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/assembly-orders?page=1&limit=10", "host": ["{{base_url}}"], "path": ["assembly-orders"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"10"}] }
+          }
+        },
+        {
+          "name": "GET Assembly Order By ID",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/assembly-orders/{{assembly_order_id}}", "host": ["{{base_url}}"], "path": ["assembly-orders","{{assembly_order_id}}"] }
+          }
+        },
+        {
+          "name": "POST Create Assembly Order",
+          "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('assembly_order_id', json.data.id);"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pln_order_id\": \"{{pln_order_id}}\",\n  \"product_id\": \"{{product_id}}\",\n  \"quantity\": 50,\n  \"requested_by_id\": \"{{user_id}}\",\n  \"target_date\": \"2024-02-15\",\n  \"notes\": \"Assembly batch pertama\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/assembly-orders", "host": ["{{base_url}}"], "path": ["assembly-orders"] }
+          }
+        },
+        {
+          "name": "POST Confirm Component",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": \"{{product_id}}\",\n  \"warehouse_id\": \"<warehouse-id>\",\n  \"quantity_confirmed\": 50,\n  \"confirmed_by_id\": \"{{user_id}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/assembly-orders/{{assembly_order_id}}/confirm-item", "host": ["{{base_url}}"], "path": ["assembly-orders","{{assembly_order_id}}","confirm-item"] }
+          }
+        },
+        {
+          "name": "POST Process Assembly",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"processed_by_id\": \"{{user_id}}\",\n  \"components\": [\n    { \"product_id\": \"{{product_id}}\", \"quantity_used\": 50 }\n  ]\n}"
+            },
+            "url": { "raw": "{{base_url}}/assembly-orders/{{assembly_order_id}}/process", "host": ["{{base_url}}"], "path": ["assembly-orders","{{assembly_order_id}}","process"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🔢 PLN Code",
+      "item": [
+        {
+          "name": "PLN Master Data",
+          "item": [
+            {
+              "name": "Material Groups",
+              "item": [
+                {
+                  "name": "GET All Material Groups",
+                  "request": {
+                    "method": "GET",
+                    "url": { "raw": "{{base_url}}/pln-master/material-groups", "host": ["{{base_url}}"], "path": ["pln-master","material-groups"] }
+                  }
+                },
+                {
+                  "name": "POST Create Material Group",
+                  "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('material_group_id', json.data.id);"]}}],
+                  "request": {
+                    "method": "POST",
+                    "header": [{ "key": "Content-Type", "value": "application/json" }],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"code\": \"01\",\n  \"name\": \"Meter Listrik Single Phase\",\n  \"is_active\": true,\n  \"is_default\": true\n}"
+                    },
+                    "url": { "raw": "{{base_url}}/pln-master/material-groups", "host": ["{{base_url}}"], "path": ["pln-master","material-groups"] }
+                  }
+                },
+                {
+                  "name": "PATCH Update Material Group",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [{ "key": "Content-Type", "value": "application/json" }],
+                    "body": { "mode": "raw", "raw": "{\n  \"name\": \"Meter Listrik 1 Phase Updated\"\n}" },
+                    "url": { "raw": "{{base_url}}/pln-master/material-groups/{{material_group_id}}", "host": ["{{base_url}}"], "path": ["pln-master","material-groups","{{material_group_id}}"] }
+                  }
+                },
+                {
+                  "name": "DELETE Material Group",
+                  "request": {
+                    "method": "DELETE",
+                    "url": { "raw": "{{base_url}}/pln-master/material-groups/{{material_group_id}}", "host": ["{{base_url}}"], "path": ["pln-master","material-groups","{{material_group_id}}"] }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Material Sub Groups",
+              "item": [
+                {
+                  "name": "GET All Material Sub Groups",
+                  "request": {
+                    "method": "GET",
+                    "url": {
+                      "raw": "{{base_url}}/pln-master/material-sub-groups?material_group_id={{material_group_id}}",
+                      "host": ["{{base_url}}"], "path": ["pln-master","material-sub-groups"],
+                      "query": [{"key":"material_group_id","value":"{{material_group_id}}"}]
+                    }
+                  }
+                },
+                {
+                  "name": "POST Create Material Sub Group",
+                  "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('material_sub_group_id', json.data.id);"]}}],
+                  "request": {
+                    "method": "POST",
+                    "header": [{ "key": "Content-Type", "value": "application/json" }],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"material_group_id\": \"{{material_group_id}}\",\n  \"code\": \"01\",\n  \"name\": \"900VA\",\n  \"is_active\": true,\n  \"is_default\": true\n}"
+                    },
+                    "url": { "raw": "{{base_url}}/pln-master/material-sub-groups", "host": ["{{base_url}}"], "path": ["pln-master","material-sub-groups"] }
+                  }
+                },
+                {
+                  "name": "PATCH Update Material Sub Group",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [{ "key": "Content-Type", "value": "application/json" }],
+                    "body": { "mode": "raw", "raw": "{\n  \"name\": \"900VA Updated\"\n}" },
+                    "url": { "raw": "{{base_url}}/pln-master/material-sub-groups/{{material_sub_group_id}}", "host": ["{{base_url}}"], "path": ["pln-master","material-sub-groups","{{material_sub_group_id}}"] }
+                  }
+                },
+                {
+                  "name": "DELETE Material Sub Group",
+                  "request": {
+                    "method": "DELETE",
+                    "url": { "raw": "{{base_url}}/pln-master/material-sub-groups/{{material_sub_group_id}}", "host": ["{{base_url}}"], "path": ["pln-master","material-sub-groups","{{material_sub_group_id}}"] }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Variants",
+              "item": [
+                {
+                  "name": "GET All Variants",
+                  "request": {
+                    "method": "GET",
+                    "url": { "raw": "{{base_url}}/pln-master/variants", "host": ["{{base_url}}"], "path": ["pln-master","variants"] }
+                  }
+                },
+                {
+                  "name": "POST Create Variant",
+                  "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('variant_id', json.data.id);"]}}],
+                  "request": {
+                    "method": "POST",
+                    "header": [{ "key": "Content-Type", "value": "application/json" }],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"code\": \"0100101\",\n  \"name\": \"Variant Standard 900VA\",\n  \"is_active\": true,\n  \"is_default\": true\n}"
+                    },
+                    "url": { "raw": "{{base_url}}/pln-master/variants", "host": ["{{base_url}}"], "path": ["pln-master","variants"] }
+                  }
+                },
+                {
+                  "name": "PATCH Update Variant",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [{ "key": "Content-Type", "value": "application/json" }],
+                    "body": { "mode": "raw", "raw": "{\n  \"name\": \"Variant Standard 900VA Updated\"\n}" },
+                    "url": { "raw": "{{base_url}}/pln-master/variants/{{variant_id}}", "host": ["{{base_url}}"], "path": ["pln-master","variants","{{variant_id}}"] }
+                  }
+                },
+                {
+                  "name": "DELETE Variant",
+                  "request": {
+                    "method": "DELETE",
+                    "url": { "raw": "{{base_url}}/pln-master/variants/{{variant_id}}", "host": ["{{base_url}}"], "path": ["pln-master","variants","{{variant_id}}"] }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Factories",
+              "item": [
+                {
+                  "name": "GET All Factories",
+                  "request": {
+                    "method": "GET",
+                    "url": { "raw": "{{base_url}}/pln-master/factories", "host": ["{{base_url}}"], "path": ["pln-master","factories"] }
+                  }
+                },
+                {
+                  "name": "POST Create Factory",
+                  "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('factory_id', json.data.id);"]}}],
+                  "request": {
+                    "method": "POST",
+                    "header": [{ "key": "Content-Type", "value": "application/json" }],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"code\": \"CIBG\",\n  \"name\": \"Pabrik Cibinong\",\n  \"location\": \"Cibinong, Bogor\",\n  \"is_active\": true,\n  \"is_default\": true\n}"
+                    },
+                    "url": { "raw": "{{base_url}}/pln-master/factories", "host": ["{{base_url}}"], "path": ["pln-master","factories"] }
+                  }
+                },
+                {
+                  "name": "PATCH Update Factory",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [{ "key": "Content-Type", "value": "application/json" }],
+                    "body": { "mode": "raw", "raw": "{\n  \"location\": \"Cibinong, Bogor, Jawa Barat\"\n}" },
+                    "url": { "raw": "{{base_url}}/pln-master/factories/{{factory_id}}", "host": ["{{base_url}}"], "path": ["pln-master","factories","{{factory_id}}"] }
+                  }
+                },
+                {
+                  "name": "DELETE Factory",
+                  "request": {
+                    "method": "DELETE",
+                    "url": { "raw": "{{base_url}}/pln-master/factories/{{factory_id}}", "host": ["{{base_url}}"], "path": ["pln-master","factories","{{factory_id}}"] }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "PLN Code Generation",
+          "item": [
+            {
+              "name": "POST Generate Partial",
+              "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('pln_code_id', json.data.id);"]}}],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"factory_id\": \"{{factory_id}}\",\n  \"assembly_order_id\": \"{{assembly_order_id}}\",\n  \"created_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/generate/partial", "host": ["{{base_url}}"], "path": ["pln-codes","generate","partial"] }
+              }
+            },
+            {
+              "name": "POST Generate Partial Bulk",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"factory_id\": \"{{factory_id}}\",\n  \"quantity\": 10,\n  \"assembly_order_id\": \"{{assembly_order_id}}\",\n  \"created_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/generate/partial/bulk", "host": ["{{base_url}}"], "path": ["pln-codes","generate","partial","bulk"] }
+              }
+            },
+            {
+              "name": "PATCH Add Material Info (Partial → MATERIAL_SELECTED)",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"material_group_id\": \"{{material_group_id}}\",\n  \"material_sub_group_id\": \"{{material_sub_group_id}}\",\n  \"variant_id\": \"{{variant_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/{{pln_code_id}}/material", "host": ["{{base_url}}"], "path": ["pln-codes","{{pln_code_id}}","material"] }
+              }
+            },
+            {
+              "name": "POST Generate Complete (1 step)",
+              "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('pln_code_id', json.data.id);"]}}],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"factory_id\": \"{{factory_id}}\",\n  \"material_group_id\": \"{{material_group_id}}\",\n  \"material_sub_group_id\": \"{{material_sub_group_id}}\",\n  \"variant_id\": \"{{variant_id}}\",\n  \"assembly_order_id\": \"{{assembly_order_id}}\",\n  \"created_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/generate/complete", "host": ["{{base_url}}"], "path": ["pln-codes","generate","complete"] }
+              }
+            },
+            {
+              "name": "POST Generate Complete Bulk",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"factory_id\": \"{{factory_id}}\",\n  \"material_group_id\": \"{{material_group_id}}\",\n  \"material_sub_group_id\": \"{{material_sub_group_id}}\",\n  \"variant_id\": \"{{variant_id}}\",\n  \"quantity\": 50,\n  \"assembly_order_id\": \"{{assembly_order_id}}\",\n  \"created_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/generate/complete/bulk", "host": ["{{base_url}}"], "path": ["pln-codes","generate","complete","bulk"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "PLN Code Laser & Print",
+          "item": [
+            {
+              "name": "PATCH Mark As Lasered",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"lasered_by_id\": \"{{user_id}}\",\n  \"laser_notes\": \"Laser marking OK\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/{{pln_code_id}}/laser", "host": ["{{base_url}}"], "path": ["pln-codes","{{pln_code_id}}","laser"] }
+              }
+            },
+            {
+              "name": "PATCH Bulk Mark As Lasered",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"pln_code_ids\": [\"{{pln_code_id}}\"],\n  \"lasered_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/laser/bulk", "host": ["{{base_url}}"], "path": ["pln-codes","laser","bulk"] }
+              }
+            },
+            {
+              "name": "PATCH Mark As Printed",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"printed_by_id\": \"{{user_id}}\",\n  \"print_notes\": \"Printed OK\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/{{pln_code_id}}/print", "host": ["{{base_url}}"], "path": ["pln-codes","{{pln_code_id}}","print"] }
+              }
+            },
+            {
+              "name": "PATCH Bulk Mark As Printed",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"pln_code_ids\": [\"{{pln_code_id}}\"],\n  \"printed_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/print/bulk", "host": ["{{base_url}}"], "path": ["pln-codes","print","bulk"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "PLN Code Queries",
+          "item": [
+            {
+              "name": "GET All PLN Codes",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}/pln-codes?page=1&limit=10",
+                  "host": ["{{base_url}}"], "path": ["pln-codes"],
+                  "query": [
+                    {"key":"page","value":"1"},{"key":"limit","value":"10"},
+                    {"key":"status","value":"MATERIAL_SELECTED","disabled":true},
+                    {"key":"factory_id","value":"{{factory_id}}","disabled":true},
+                    {"key":"is_lasered","value":"false","disabled":true}
+                  ]
+                }
+              }
+            },
+            {
+              "name": "GET PLN Code By ID",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/pln-codes/{{pln_code_id}}", "host": ["{{base_url}}"], "path": ["pln-codes","{{pln_code_id}}"] }
+              }
+            },
+            {
+              "name": "GET By Full Code",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/pln-codes/by-code/01010100101CIBG000000011", "host": ["{{base_url}}"], "path": ["pln-codes","by-code","01010100101CIBG000000011"] }
+              }
+            },
+            {
+              "name": "GET Unlasered",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/pln-codes/unlasered?page=1&limit=10", "host": ["{{base_url}}"], "path": ["pln-codes","unlasered"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"10"}] }
+              }
+            },
+            {
+              "name": "GET Unprinted",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/pln-codes/unprinted?page=1&limit=10", "host": ["{{base_url}}"], "path": ["pln-codes","unprinted"], "query": [{"key":"page","value":"1"},{"key":"limit","value":"10"}] }
+              }
+            },
+            {
+              "name": "POST Validate Code",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_code\": \"01010100101CIBG000000011\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/validate", "host": ["{{base_url}}"], "path": ["pln-codes","validate"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Box Management",
+          "item": [
+            {
+              "name": "GET All Boxes",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{base_url}}/pln-codes/boxes?page=1&limit=10",
+                  "host": ["{{base_url}}"], "path": ["pln-codes","boxes"],
+                  "query": [{"key":"page","value":"1"},{"key":"limit","value":"10"},{"key":"status","value":"OPEN","disabled":true}]
+                }
+              }
+            },
+            {
+              "name": "GET Box By ID",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{base_url}}/pln-codes/boxes/{{box_id}}", "host": ["{{base_url}}"], "path": ["pln-codes","boxes","{{box_id}}"] }
+              }
+            },
+            {
+              "name": "POST Create Box",
+              "event": [{"listen":"test","script":{"exec":["const json = pm.response.json();","if (json.success && json.data) pm.collectionVariables.set('box_id', json.data.id);"]}}],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"assembly_order_id\": \"{{assembly_order_id}}\",\n  \"capacity\": 12,\n  \"created_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/boxes", "host": ["{{base_url}}"], "path": ["pln-codes","boxes"] }
+              }
+            },
+            {
+              "name": "PATCH Assign Codes to Box",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"pln_code_ids\": [\"{{pln_code_id}}\"],\n  \"box_id\": \"{{box_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/boxes/assign", "host": ["{{base_url}}"], "path": ["pln-codes","boxes","assign"] }
+              }
+            },
+            {
+              "name": "PATCH Seal Box",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"sealed_by_id\": \"{{user_id}}\"\n}"
+                },
+                "url": { "raw": "{{base_url}}/pln-codes/boxes/{{box_id}}/seal", "host": ["{{base_url}}"], "path": ["pln-codes","boxes","{{box_id}}","seal"] }
+              }
+            }
+          ]
+        }
+      ]
+    }
+
+  ]
+}

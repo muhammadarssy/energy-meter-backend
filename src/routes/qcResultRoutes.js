@@ -8,6 +8,9 @@ router.get('/sample-inspections', controller.getAllSampleInspections);
 router.get('/sample-inspections/:id', controller.getSampleInspectionById);
 router.post('/sample-inspections', controller.createSampleInspection);
 
+// QC Progress
+router.get('/progress', controller.getQcProgress);
+
 // QC Results
 router.get('/', controller.getAllQcResults);
 router.get('/:id', controller.getQcResultById);

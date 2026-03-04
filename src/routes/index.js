@@ -3,6 +3,10 @@ const express = require('express');
 // ── Auth ──────────────────────────────────────────────────────────────────────
 const authRoutes = require('./authRoutes');
 
+// ── Product Master Data ───────────────────────────────────────────────────────
+const productRoutes = require('./productRoutes');
+const productMasterRoutes = require('./productMasterRoutes');
+
 // ── QC Master Data ────────────────────────────────────────────────────────────
 const defectTypeRoutes = require('./defectTypeRoutes');
 const qcTemplateRoutes = require('./qcTemplateRoutes');
@@ -40,6 +44,10 @@ router.get('/health', (req, res) => {
 
 // Auth / Users / Roles / Permissions
 router.use('/auth', authRoutes);
+
+// Product Master Data
+router.use('/products', productRoutes);
+router.use('/master', productMasterRoutes);
 
 // QC Master Data
 router.use('/defect-types', defectTypeRoutes);

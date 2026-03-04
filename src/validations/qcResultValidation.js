@@ -63,7 +63,12 @@ const qcResultValidation = {
         entity_type: Joi.string().optional(),
         entity_id: Joi.string().uuid().optional(),
         unresolved_only: Joi.boolean().optional()
-    })
+    }),
+
+    progressQuery: Joi.object({
+        serial_number: Joi.string().max(100).optional(),
+        receiving_item_id: Joi.string().uuid().optional()
+    }).or('serial_number', 'receiving_item_id')
 };
 
 module.exports = { qcResultValidation };

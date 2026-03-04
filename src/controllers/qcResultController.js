@@ -96,9 +96,20 @@ const resolveProductionStop = [
     })
 ];
 
+// ─── QC Progress ──────────────────────────────────────────────────────────────
+
+const getQcProgress = [
+    validate(qcResultValidation.progressQuery, 'query'),
+    asyncHandler(async (req, res) => {
+        const result = await qcResultService.getQcProgress(req.query);
+        return success.ok(res, 'QC progress retrieved', result);
+    })
+];
+
 module.exports = {
     getAllSampleInspections, getSampleInspectionById, createSampleInspection,
     getAllQcResults, getQcResultById, createQcResult,
     addDefect, updateDefect, deleteDefect,
-    getAllProductionStops, resolveProductionStop
+    getAllProductionStops, resolveProductionStop,
+    getQcProgress
 };

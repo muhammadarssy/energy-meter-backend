@@ -1,12 +1,20 @@
 const winston = require('winston');
 const path = require('path');
 
+const formatMeta = (meta) => {
+    // Hapus internal Winston fields
+    const { splat, service, ...rest } = meta;
+    if (Object.keys(rest).length === 0) return '';
+    return ' | ' + JSON.stringify(rest);
+};
+
 const customFormat = winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
-    winston.format.printf(({ level, message, timestamp, stack }) => {
-        if (stack) return `${timestamp} [${level.toUpperCase()}]: ${message}\n${stack}`;
-        return `${timestamp} [${level.toUpperCase()}]: ${message}`;
+    winston.format.printf(({ level, message, timestamp, stack, ...meta }) => {
+        const metaStr = formatMeta(meta);
+        if (stack) return `${timestamp} [${level.toUpperCase()}]: ${message}${metaStr}\n${stack}`;
+        return `${timestamp} [${level.toUpperCase()}]: ${message}${metaStr}`;
     })
 );
 

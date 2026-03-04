@@ -263,6 +263,119 @@ class QcResultService {
             }
         });
     }
+
+    // ─── QC Progress ──────────────────────────────────────────────────────────
+
+    async getQcProgress({ serial_number, receiving_item_id }) {
+        // 1. Resolve receiving_item_id from serial_number if needed
+        if (!receiving_item_id && serial_number) {
+            const staging = await prisma.serial_stagings.findFirst({
+                where: { serial_number },
+                select: { receiving_item_id: true }
+            });
+            if (!staging) {
+                const err = new Error('Serial number not found');
+                err.status = 404;
+                throw err;
+            }
+            receiving_item_id = staging.receiving_item_id;
+        }
+
+        if (!receiving_item_id) {
+            const err = new Error('serial_number or receiving_item_id is required');
+            err.status = 400;
+            throw err;
+        }
+
+        // 2. Get receiving_item with product
+        const receivingItem = await prisma.receiving_items.findUnique({
+            where: { id: receiving_item_id },
+            include: {
+                product: { select: { id: true, name: true, sap_code: true } },
+                receiving_header: { select: { id: true, received_date: true, batch_id: true } }
+            }
+        });
+
+        if (!receivingItem) {
+            const err = new Error('Receiving item not found');
+            err.status = 404;
+            throw err;
+        }
+
+        // 3. Get all active level_inspections for the product (= required QC stages)
+        const levelInspections = await prisma.level_inspections.findMany({
+            where: { product_id: receivingItem.product_id, is_active: true },
+            include: {
+                qc_template: { select: { id: true, name: true, code: true } }
+            },
+            orderBy: { valid_from: 'asc' }
+        });
+
+        // 4. Get all sample_inspections for this receiving_item with their qc_results
+        const sampleInspections = await prisma.sample_inspections.findMany({
+            where: { receiving_item_id },
+            include: {
+                qc_results: {
+                    select: { id: true, result: true, inspection_date: true, qc_place: true },
+                    orderBy: { inspection_date: 'desc' }
+                }
+            }
+        });
+
+        // Build lookup: level_inspection_id → sample_inspection
+        const siByLevelInspId = {};
+        for (const si of sampleInspections) {
+            if (si.level_inspection_id) {
+                siByLevelInspId[si.level_inspection_id] = si;
+            }
+        }
+
+        // 5. Build per-stage status
+        const stages = levelInspections.map((li, idx) => {
+            const si = siByLevelInspId[li.id];
+            const latestResult = si?.qc_results?.[0] || null;
+
+            let status;
+            if (!si) status = 'pending';
+            else if (!latestResult) status = 'in_progress';
+            else status = latestResult.result; // 'pass' | 'fail' | 'conditional'
+
+            return {
+                stage: idx + 1,
+                level_inspection_id: li.id,
+                qc_template: li.qc_template,
+                inspection_level: li.level,
+                sample_size: li.sample_size,
+                status,
+                sample_inspection: si
+                    ? { id: si.id, qc_phase: si.qc_phase, created_at: si.created_at }
+                    : null,
+                latest_qc_result: latestResult
+            };
+        });
+
+        const completed = stages.filter(s => ['pass', 'fail', 'conditional'].includes(s.status)).length;
+        const in_progress = stages.filter(s => s.status === 'in_progress').length;
+        const pending = stages.filter(s => s.status === 'pending').length;
+
+        return {
+            receiving_item: {
+                id: receivingItem.id,
+                product: receivingItem.product,
+                receiving_header: receivingItem.receiving_header
+            },
+            serial_number: serial_number || null,
+            summary: {
+                total_stages: stages.length,
+                completed,
+                in_progress,
+                pending,
+                all_passed: stages.length > 0 && stages.every(s => s.status === 'pass'),
+                has_failure: stages.some(s => s.status === 'fail')
+            },
+            stages
+        };
+    }
 }
 
 module.exports = new QcResultService();
