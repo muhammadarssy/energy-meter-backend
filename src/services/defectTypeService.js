@@ -39,7 +39,7 @@ class DefectTypeService {
             where: { id },
             include: {
                 level_inspections: {
-                    include: { level_inspection: { select: { id: true, level: true, product_id: true } } }
+                    include: { level_inspection: { select: { id: true, level: true } } }
                 }
             }
         });

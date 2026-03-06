@@ -1,25 +1,5 @@
 const Joi = require('joi');
 
-// ─── Level Inspection schema (inline saat create/update product) ───────────────
-const levelInspectionInlineSchema = Joi.object({
-    level: Joi.string().valid('I', 'II', 'III').required(),
-    aql_critical: Joi.number().min(0).required(),
-    aql_major: Joi.number().min(0).required(),
-    aql_minor: Joi.number().min(0).required(),
-    sample_size: Joi.number().integer().min(1).optional().allow(null),
-    accept_critical: Joi.number().integer().min(0).optional().allow(null),
-    accept_major: Joi.number().integer().min(0).optional().allow(null),
-    accept_minor: Joi.number().integer().min(0).optional().allow(null),
-    reject_critical: Joi.number().integer().min(0).optional().allow(null),
-    reject_major: Joi.number().integer().min(0).optional().allow(null),
-    reject_minor: Joi.number().integer().min(0).optional().allow(null),
-    qc_template_id: Joi.string().uuid().optional().allow(null),
-    is_active: Joi.boolean().default(true),
-    valid_from: Joi.date().optional().allow(null),
-    valid_to: Joi.date().optional().allow(null),
-    notes: Joi.string().max(500).optional().allow('', null)
-});
-
 const productValidation = {
     create: Joi.object({
         // Core fields
@@ -35,8 +15,7 @@ const productValidation = {
         image_url: Joi.string().max(500).optional().allow('', null),
 
         // Inline relations
-        category_ids: Joi.array().items(Joi.string().uuid()).optional().default([]),
-        level_inspections: Joi.array().items(levelInspectionInlineSchema).optional().default([])
+        category_ids: Joi.array().items(Joi.string().uuid()).optional().default([])
     }),
 
     update: Joi.object({
@@ -66,26 +45,11 @@ const productValidation = {
         is_qc: Joi.boolean().optional()
     }),
 
-    addLevelInspection: levelInspectionInlineSchema,
-
-    updateLevelInspection: Joi.object({
-        level: Joi.string().valid('I', 'II', 'III').optional(),
-        aql_critical: Joi.number().min(0).optional(),
-        aql_major: Joi.number().min(0).optional(),
-        aql_minor: Joi.number().min(0).optional(),
-        sample_size: Joi.number().integer().min(1).optional().allow(null),
-        accept_critical: Joi.number().integer().min(0).optional().allow(null),
-        accept_major: Joi.number().integer().min(0).optional().allow(null),
-        accept_minor: Joi.number().integer().min(0).optional().allow(null),
-        reject_critical: Joi.number().integer().min(0).optional().allow(null),
-        reject_major: Joi.number().integer().min(0).optional().allow(null),
-        reject_minor: Joi.number().integer().min(0).optional().allow(null),
-        qc_template_id: Joi.string().uuid().optional().allow(null),
-        is_active: Joi.boolean().optional(),
-        valid_from: Joi.date().optional().allow(null),
-        valid_to: Joi.date().optional().allow(null),
-        notes: Joi.string().max(500).optional().allow('', null)
-    }).min(1)
+    // POST /products/:id/level-inspections — assign existing QC template to this product
+    addLevelInspection: Joi.object({
+        qc_template_id: Joi.string().uuid().required()
+    })
 };
 
 module.exports = { productValidation };
+

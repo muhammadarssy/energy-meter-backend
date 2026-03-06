@@ -56,4 +56,15 @@ const upload = multer({
     limits: { fileSize: MAX_FILE_SIZE, files: MAX_FILES }
 });
 
-module.exports = { upload, getUploadDir, UPLOAD_BASE };
+// Memory storage untuk import file (xlsx) — tidak disimpan ke disk
+const uploadMemory = multer({
+    storage: multer.memoryStorage(),
+    fileFilter: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (ext === '.xlsx' || ext === '.xls') cb(null, true);
+        else cb(new Error('Hanya file .xlsx yang diizinkan'), false);
+    },
+    limits: { fileSize: MAX_FILE_SIZE, files: 1 }
+});
+
+module.exports = { upload, uploadMemory, getUploadDir, UPLOAD_BASE };

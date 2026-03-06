@@ -5,13 +5,13 @@ class LevelInspectionService {
     async getAll(options = {}) {
         const {
             page = 1, limit = 10,
-            product_id, is_active,
+            qc_template_id, is_active,
             sortBy = 'created_at', sortOrder = 'desc'
         } = options;
 
         const skip = (page - 1) * limit;
         const where = {};
-        if (product_id) where.product_id = product_id;
+        if (qc_template_id) where.qc_template_id = qc_template_id;
         if (is_active !== undefined) where.is_active = is_active;
 
         const [data, total] = await Promise.all([
@@ -41,7 +41,7 @@ class LevelInspectionService {
 
     async getActiveByProduct(productId) {
         return prisma.level_inspections.findFirst({
-            where: { product_id: productId, is_active: true },
+            where: { is_active: true, qc_template: { product_id: productId } },
             orderBy: { valid_from: 'desc' },
             include: {
                 defect_types: { include: { defect_type: true } },

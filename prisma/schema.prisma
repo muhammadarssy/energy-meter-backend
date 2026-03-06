@@ -351,7 +351,7 @@ model products {
   type              product_types              @relation(fields: [product_type_id], references: [id], onDelete: Restrict)
   supplier          suppliers                  @relation(fields: [supplier_id], references: [id], onDelete: Restrict)
   categories        product_category_mappings[]
-  level_inspections level_inspections[]
+  qc_templates      qc_templates[]
   parent_components product_components[]       @relation("ParentComponents")
   used_as_component product_components[]       @relation("ComponentProducts")
 
@@ -402,7 +402,6 @@ model product_components {
 
 model level_inspections {
   id              String    @id @default(uuid())
-  product_id      String
   level           String    // Inspection level: "I" | "II" | "III" (ISO 2859)
   // AQL percentage per kategori (input dari QA engineer)
   aql_critical    Float     // AQL level critical, contoh: 0.0 (zero defect)
@@ -416,8 +415,8 @@ model level_inspections {
   reject_critical Int?      // Jumlah defect critical yang memicu STOP
   reject_major    Int?      // Jumlah defect major yang memicu STOP
   reject_minor    Int?      // Jumlah defect minor yang memicu STOP
-  // Link ke QC template — template checklist yang dipakai untuk produk ini
-  qc_template_id  String?
+  // Setiap level inspection milik tepat 1 qc_template (relasi 1:1)
+  qc_template_id  String    @unique
   is_active       Boolean   @default(true)
   valid_from      DateTime  @default(now())
   valid_to        DateTime?
@@ -425,15 +424,13 @@ model level_inspections {
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
 
-  product     products      @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  qc_template qc_templates? @relation(fields: [qc_template_id], references: [id], onDelete: SetNull)
+  qc_template qc_templates @relation(fields: [qc_template_id], references: [id], onDelete: Cascade)
 
   // Daftar defect yang relevan untuk level inspeksi ini (menggantikan used_defects String)
   defect_types       level_inspection_defects[]
   sample_inspections sample_inspections[]
 
-  @@index([product_id, is_active])
-  @@index([qc_template_id])
+  @@index([is_active])
   @@map("level_inspections")
 }
 
@@ -474,24 +471,27 @@ model level_inspection_defects {
   @@map("level_inspection_defects")
 }
 
-// Template/jenis QC — menggantikan qc_id String + qc_name String yang tersebar
-// display_order menentukan urutan tampil di frontend
+// Template/jenis QC — master data mandiri, dapat di-assign ke product
+// Saat create, dapat sekaligus menyertakan Level Inspection (AQL params)
 model qc_templates {
   id            String   @id @default(uuid())
-  code          String   @unique // contoh: "QC-RCV-METER", "QC-ASM-METER"
-  name          String           // Nama display: "QC Receiving Meter Listrik"
+  product_id    String?                   // nullable — di-assign ke product lewat halaman product
+  code          String   @unique          // kode unik global, contoh: "QC-RCV-METER"
+  name          String                    // Nama display: "QC Receiving Meter Listrik"
   description   String?
-  qc_phase      QcPhase          // receiving | assembly | shipping
-  display_order Int      @default(0) // Urutan tampil di frontend per fase
+  qc_phase      QcPhase                   // receiving | assembly | shipping
+  display_order Int      @default(0)      // Urutan tampil di frontend
   is_active     Boolean  @default(true)
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
 
+  product            products?            @relation(fields: [product_id], references: [id], onDelete: SetNull)
   checklist_items    qc_checklist_items[]
-  level_inspections  level_inspections[]
+  level_inspection   level_inspections?   // 1 template memiliki 0-1 level inspection
   sample_inspections sample_inspections[]
   qc_results         qc_results[]
 
+  @@index([product_id])
   @@index([qc_phase, display_order])
   @@index([is_active])
   @@map("qc_templates")

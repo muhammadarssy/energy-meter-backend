@@ -1,5 +1,6 @@
 const prisma = require('../config/database');
 const { createPaginationMeta } = require('../utils/response');
+const XLSX = require('xlsx');
 
 // ─── Default include untuk GET product ────────────────────────────────────────
 const DEFAULT_INCLUDE = {
@@ -8,12 +9,10 @@ const DEFAULT_INCLUDE = {
     categories: {
         include: { category: { select: { id: true, code: true, name: true } } }
     },
-    level_inspections: {
+    qc_templates: {
         where: { is_active: true },
-        orderBy: { valid_from: 'desc' },
-        include: {
-            qc_template: { select: { id: true, code: true, name: true } }
-        }
+        orderBy: { display_order: 'asc' },
+        include: { level_inspection: true }
     }
 };
 
@@ -56,12 +55,10 @@ class ProductService {
             where: { id, deleted_at: null },
             include: {
                 ...DEFAULT_INCLUDE,
-                // Also include all level_inspections (active + inactive) for detail view
-                level_inspections: {
-                    orderBy: { valid_from: 'desc' },
-                    include: {
-                        qc_template: { select: { id: true, code: true, name: true } }
-                    }
+                // Also include all qc_templates (active + inactive) for detail view
+                qc_templates: {
+                    orderBy: { display_order: 'asc' },
+                    include: { level_inspection: true }
                 },
                 parent_components: {
                     include: {
@@ -78,10 +75,10 @@ class ProductService {
         });
     }
 
-    // ─── Create (dengan inline categories + level_inspections) ────────────────
+    // ─── Create (dengan inline categories) ──────────────────────────────────
 
     async create(data) {
-        const { category_ids = [], level_inspections = [], ...productData } = data;
+        const { category_ids = [], ...productData } = data;
 
         return prisma.$transaction(async (tx) => {
             // 1. Buat product
@@ -98,17 +95,7 @@ class ProductService {
                 });
             }
 
-            // 3. Buat level inspections jika ada
-            if (level_inspections.length > 0) {
-                await tx.level_inspections.createMany({
-                    data: level_inspections.map(li => ({
-                        ...li,
-                        product_id: product.id
-                    }))
-                });
-            }
-
-            // 4. Return dengan relasi lengkap
+            // 3. Return dengan relasi lengkap
             return tx.products.findUnique({
                 where: { id: product.id },
                 include: DEFAULT_INCLUDE
@@ -155,43 +142,202 @@ class ProductService {
         });
     }
 
-    // ─── Level Inspections (nested endpoints) ─────────────────────────────────
+    // ─── QC Template Assignments (via /products/:id/level-inspections routes) ──
 
     async getLevelInspections(productId) {
-        return prisma.level_inspections.findMany({
+        return prisma.qc_templates.findMany({
             where: { product_id: productId },
-            orderBy: { valid_from: 'desc' },
-            include: {
-                qc_template: { select: { id: true, code: true, name: true } }
-            }
+            orderBy: { display_order: 'asc' },
+            include: { level_inspection: true }
         });
     }
 
+    // Assign an existing QC template to this product
     async addLevelInspection(productId, data) {
-        return prisma.level_inspections.create({
-            data: { ...data, product_id: productId },
-            include: {
-                qc_template: { select: { id: true, code: true, name: true } }
-            }
+        const { qc_template_id } = data;
+
+        const template = await prisma.qc_templates.findUnique({ where: { id: qc_template_id } });
+        if (!template) throw Object.assign(new Error('QC template not found'), { statusCode: 404 });
+        if (template.product_id && template.product_id !== productId) {
+            throw Object.assign(new Error('Template already assigned to another product'), { statusCode: 409 });
+        }
+
+        return prisma.qc_templates.update({
+            where: { id: qc_template_id },
+            data: { product_id: productId },
+            include: { level_inspection: true }
         });
     }
 
-    async updateLevelInspection(levelInspectionId, data) {
-        return prisma.level_inspections.update({
-            where: { id: levelInspectionId },
-            data,
-            include: {
-                qc_template: { select: { id: true, code: true, name: true } }
-            }
+    // Unassign: set product_id = null (template kembali ke pool)
+    async deleteLevelInspection(templateId) {
+        return prisma.qc_templates.update({
+            where: { id: templateId },
+            data: { product_id: null }
         });
-    }
-
-    async deleteLevelInspection(levelInspectionId) {
-        return prisma.level_inspections.delete({ where: { id: levelInspectionId } });
     }
 
     async getLevelInspectionById(id) {
-        return prisma.level_inspections.findUnique({ where: { id } });
+        return prisma.qc_templates.findUnique({
+            where: { id },
+            include: { level_inspection: true }
+        });
+    }
+
+    // ─── Export ───────────────────────────────────────────────────────────────
+
+    async generateXlsx(options = {}) {
+        const where = { deleted_at: null };
+        if (options.is_active !== undefined) where.is_active = options.is_active === 'true' || options.is_active === true;
+
+        const products = await prisma.products.findMany({
+            where,
+            orderBy: { created_at: 'desc' },
+            include: {
+                type: { select: { code: true, name: true } },
+                supplier: { select: { code: true, name: true } },
+                categories: { include: { category: { select: { code: true, name: true } } } }
+            }
+        });
+
+        const rows = products.map((p) => ({
+            sap_code: p.sap_code,
+            name: p.name,
+            description: p.description || '',
+            product_type_code: p.type?.code || '',
+            supplier_code: p.supplier?.code || '',
+            categories: p.categories.map((c) => c.category.code).join('|'),
+            is_serialize: p.is_serialize ? 'TRUE' : 'FALSE',
+            is_qc: p.is_qc ? 'TRUE' : 'FALSE',
+            is_active: p.is_active ? 'TRUE' : 'FALSE',
+            created_at: p.created_at ? new Date(p.created_at).toISOString() : ''
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [
+            { wch: 20 }, { wch: 40 }, { wch: 40 }, { wch: 20 }, { wch: 20 },
+            { wch: 30 }, { wch: 14 }, { wch: 8 }, { wch: 10 }, { wch: 24 }
+        ];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Products');
+        return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    }
+
+    generateTemplate() {
+        const headers = [{
+            sap_code: 'SAP-001',
+            name: 'Contoh Produk',
+            description: 'Deskripsi opsional',
+            product_type_code: 'TYPE-001',
+            supplier_code: 'SUP-001',
+            categories: 'CAT-001|CAT-002',
+            is_serialize: 'TRUE',
+            is_qc: 'TRUE',
+            is_active: 'TRUE'
+        }];
+        const ws = XLSX.utils.json_to_sheet(headers);
+        ws['!cols'] = [
+            { wch: 20 }, { wch: 40 }, { wch: 40 }, { wch: 20 }, { wch: 20 },
+            { wch: 30 }, { wch: 14 }, { wch: 8 }, { wch: 10 }
+        ];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Products');
+        return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    }
+
+    // ─── Import ───────────────────────────────────────────────────────────────
+
+    async importFromXlsx(buffer) {
+        const wb = XLSX.read(buffer, { type: 'buffer' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+        if (rows.length === 0) throw { status: 400, message: 'File kosong atau tidak ada data di sheet pertama' };
+
+        // Load lookup tables
+        const [types, suppliers, categories] = await Promise.all([
+            prisma.product_types.findMany({ where: { deleted_at: null }, select: { id: true, code: true } }),
+            prisma.suppliers.findMany({ where: { deleted_at: null }, select: { id: true, code: true } }),
+            prisma.product_categories.findMany({ where: { deleted_at: null }, select: { id: true, code: true } })
+        ]);
+
+        const typeMap = Object.fromEntries(types.map((t) => [t.code.trim().toUpperCase(), t.id]));
+        const supplierMap = Object.fromEntries(suppliers.map((s) => [s.code.trim().toUpperCase(), s.id]));
+        const categoryMap = Object.fromEntries(categories.map((c) => [c.code.trim().toUpperCase(), c.id]));
+
+        const results = { created: 0, updated: 0, skipped: 0, errors: [] };
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const rowNum = i + 2; // Excel row number (1=header)
+
+            try {
+                const sapCode = String(row.sap_code || '').trim();
+                const name = String(row.name || '').trim();
+
+                if (!sapCode) { results.errors.push({ row: rowNum, error: 'sap_code kosong' }); results.skipped++; continue; }
+                if (!name) { results.errors.push({ row: rowNum, sap_code: sapCode, error: 'name kosong' }); results.skipped++; continue; }
+
+                const typeCode = String(row.product_type_code || '').trim().toUpperCase();
+                const supplierCode = String(row.supplier_code || '').trim().toUpperCase();
+
+                const product_type_id = typeMap[typeCode];
+                const supplier_id = supplierMap[supplierCode];
+
+                if (!product_type_id) { results.errors.push({ row: rowNum, sap_code: sapCode, error: `product_type_code "${row.product_type_code}" tidak ditemukan` }); results.skipped++; continue; }
+                if (!supplier_id) { results.errors.push({ row: rowNum, sap_code: sapCode, error: `supplier_code "${row.supplier_code}" tidak ditemukan` }); results.skipped++; continue; }
+
+                const parseBool = (val, def = true) => {
+                    const s = String(val).trim().toUpperCase();
+                    if (s === 'TRUE' || s === '1' || s === 'YES') return true;
+                    if (s === 'FALSE' || s === '0' || s === 'NO') return false;
+                    return def;
+                };
+
+                // Parse category codes (pipe-separated)
+                const categoryCodes = String(row.categories || '').split('|').map((c) => c.trim().toUpperCase()).filter(Boolean);
+                const category_ids = categoryCodes.map((c) => categoryMap[c]).filter(Boolean);
+
+                const productData = {
+                    name,
+                    description: String(row.description || '').trim() || null,
+                    product_type_id,
+                    supplier_id,
+                    is_serialize: parseBool(row.is_serialize),
+                    is_qc: parseBool(row.is_qc),
+                    is_active: parseBool(row.is_active),
+                    deleted_at: null
+                };
+
+                const existing = await prisma.products.findFirst({ where: { sap_code: sapCode } });
+
+                await prisma.$transaction(async (tx) => {
+                    let product;
+                    if (existing) {
+                        product = await tx.products.update({ where: { id: existing.id }, data: productData });
+                        results.updated++;
+                    } else {
+                        product = await tx.products.create({ data: { sap_code: sapCode, ...productData } });
+                        results.created++;
+                    }
+                    // Sync categories
+                    if (categoryCodes.length > 0) {
+                        await tx.product_category_mappings.deleteMany({ where: { product_id: product.id } });
+                        if (category_ids.length > 0) {
+                            await tx.product_category_mappings.createMany({
+                                data: category_ids.map((category_id) => ({ product_id: product.id, category_id })),
+                                skipDuplicates: true
+                            });
+                        }
+                    }
+                });
+            } catch (err) {
+                results.errors.push({ row: rowNum, sap_code: String(row.sap_code || ''), error: err.message });
+                results.skipped++;
+            }
+        }
+
+        return results;
     }
 }
 

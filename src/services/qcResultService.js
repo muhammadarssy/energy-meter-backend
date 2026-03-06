@@ -9,7 +9,7 @@ class QcResultService {
 
         // Fetch active level inspection for this product
         const levelInspection = await prisma.level_inspections.findFirst({
-            where: { product_id, is_active: true },
+            where: { is_active: true, qc_template: { product_id } },
             orderBy: { valid_from: 'desc' }
         });
 
@@ -304,7 +304,7 @@ class QcResultService {
 
         // 3. Get all active level_inspections for the product (= required QC stages)
         const levelInspections = await prisma.level_inspections.findMany({
-            where: { product_id: receivingItem.product_id, is_active: true },
+            where: { is_active: true, qc_template: { product_id: receivingItem.product_id } },
             include: {
                 qc_template: { select: { id: true, name: true, code: true } }
             },

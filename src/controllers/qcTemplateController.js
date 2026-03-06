@@ -2,6 +2,7 @@ const { asyncHandler } = require('../middlewares');
 const { success, error } = require('../utils/response');
 const { validate } = require('../middlewares/validate');
 const { qcTemplateValidation } = require('../validations/qcTemplateValidation');
+const { levelInspectionValidation } = require('../validations/levelInspectionValidation');
 const qcTemplateService = require('../services/qcTemplateService');
 
 // Templates
@@ -73,7 +74,33 @@ const removeChecklistItem = asyncHandler(async (req, res) => {
     return success.deleted(res, 'Checklist item deleted');
 });
 
+// ─── Level Inspection (1:1 per template) ─────────────────────────────────────
+
+const getLevelInspection = asyncHandler(async (req, res) => {
+    const item = await qcTemplateService.getLevelInspection(req.params.id);
+    if (!item) return error.notFound(res, 'Level inspection not found for this template');
+    return success.ok(res, 'Level inspection retrieved', item);
+});
+
+const saveLevelInspection = [
+    validate(levelInspectionValidation.templateLevel),
+    asyncHandler(async (req, res) => {
+        const template = await qcTemplateService.getById(req.params.id);
+        if (!template) return error.notFound(res, 'QC template not found');
+        const item = await qcTemplateService.saveLevelInspection(req.params.id, req.body);
+        return success.ok(res, 'Level inspection saved', item);
+    })
+];
+
+const removeLevelInspection = asyncHandler(async (req, res) => {
+    const existing = await qcTemplateService.getLevelInspection(req.params.id);
+    if (!existing) return error.notFound(res, 'Level inspection not found for this template');
+    await qcTemplateService.deleteLevelInspection(req.params.id);
+    return success.deleted(res, 'Level inspection deleted');
+});
+
 module.exports = {
     getAll, getById, create, update, remove,
-    getChecklistItems, addChecklistItem, updateChecklistItem, removeChecklistItem
+    getChecklistItems, addChecklistItem, updateChecklistItem, removeChecklistItem,
+    getLevelInspection, saveLevelInspection, removeLevelInspection
 };
