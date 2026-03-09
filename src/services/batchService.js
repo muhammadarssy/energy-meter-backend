@@ -9,8 +9,8 @@ class BatchService {
 
         if (search) {
             where.OR = [
-                { batch_number: { contains: search, mode: 'insensitive' } },
-                { supplier_batch_code: { contains: search, mode: 'insensitive' } }
+                { code: { contains: search, mode: 'insensitive' } },
+                { description: { contains: search, mode: 'insensitive' } }
             ];
         }
 

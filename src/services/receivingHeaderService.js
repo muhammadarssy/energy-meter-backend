@@ -28,7 +28,7 @@ class ReceivingHeaderService {
                 where, skip, take: parseInt(limit),
                 orderBy: { [sortBy]: sortOrder },
                 include: {
-                    batch: { select: { id: true, batch_number: true } },
+                    batch: { select: { id: true, code: true } },
                     purchase_order: { select: { id: true, po_number: true } }
                 }
             }),
