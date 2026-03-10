@@ -113,12 +113,6 @@ enum BoxStatus {
   SHIPPED
 }
 
-enum ReceivingStatus {
-  pending
-  accept
-  reject
-}
-
 enum QcResultStatus {
   pass
   fail
@@ -206,6 +200,9 @@ model users {
 
   // Serial scanning back-relation
   serial_stagings_scanned serial_stagings[] @relation("SerialScannedBy")
+
+  // Receiving confirmation back-relation
+  confirmed_receivings receiving_confirmations[] @relation("ReceivingConfirmedBy")
 
   @@index([deleted_at])
   @@map("users")
@@ -473,13 +470,21 @@ model level_inspection_defects {
 
 // Template/jenis QC — master data mandiri, dapat di-assign ke product
 // Saat create, dapat sekaligus menyertakan Level Inspection (AQL params)
+// 
+// FLOW QC TEMPLATE:
+// 1. Product dapat memiliki multiple qc_templates dengan qc_phase berbeda (receiving/assembly/shipping)
+// 2. Saat tracking dibuat dengan tracking_type tertentu, qc_template yang digunakan harus match:
+//    - tracking.tracking_type = "receiving" → gunakan qc_template dengan qc_phase = "receiving"
+//    - tracking.tracking_type = "assembly" → gunakan qc_template dengan qc_phase = "assembly"
+//    - tracking.tracking_type = "shipping" → gunakan qc_template dengan qc_phase = "shipping"
+// 3. Saat create qc_result, application layer harus validasi qc_template.qc_phase === tracking.tracking_type
 model qc_templates {
   id            String   @id @default(uuid())
   product_id    String?                   // nullable — di-assign ke product lewat halaman product
   code          String   @unique          // kode unik global, contoh: "QC-RCV-METER"
   name          String                    // Nama display: "QC Receiving Meter Listrik"
   description   String?
-  qc_phase      QcPhase                   // receiving | assembly | shipping
+  qc_phase      QcPhase                   // receiving | assembly | shipping (harus match dengan tracking.tracking_type)
   display_order Int      @default(0)      // Urutan tampil di frontend
   is_active     Boolean  @default(true)
   created_at    DateTime @default(now())
@@ -494,6 +499,7 @@ model qc_templates {
   @@index([product_id])
   @@index([qc_phase, display_order])
   @@index([is_active])
+  @@index([product_id, qc_phase, is_active]) // Composite index untuk query template berdasarkan product + phase
   @@map("qc_templates")
 }
 
@@ -832,20 +838,18 @@ model purchase_orders {
 }
 
 model receiving_headers {
-  id                String          @id @default(uuid())
+  id                String   @id @default(uuid())
   purchase_order_id String
-  // Fix: reference_ao String? → assembly_order_id FK (nullable: tidak semua receiving terkait assembly)
   assembly_order_id String?
-  gr_number         String          @unique
+  gr_number         String   @unique
   notes             String?
   image_url         String?
   received_by       String
   received_date     DateTime
-  status            ReceivingStatus @default(pending)
   batch_id          String
   location          String
-  created_at        DateTime        @default(now())
-  updated_at        DateTime        @updatedAt
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
   deleted_at        DateTime?
 
   purchase_order     purchase_orders    @relation(fields: [purchase_order_id], references: [id], onDelete: Restrict)
@@ -854,8 +858,8 @@ model receiving_headers {
   assembly_order     assembly_orders?   @relation(fields: [assembly_order_id], references: [id], onDelete: SetNull)
   receiving_items    receiving_items[]
   warehouse_requests warehouse_requests[]
+  confirmations      receiving_confirmations[]
 
-  @@index([status])
   @@index([batch_id])
   @@index([received_date])
   @@index([deleted_at])
@@ -899,6 +903,20 @@ model serial_stagings {
   @@index([receiving_item_id])
   @@index([scanned_by])
   @@map("serial_stagings")
+}
+
+model receiving_confirmations {
+  id                  String   @id @default(uuid())
+  receiving_header_id String
+  confirmed_by        String
+  confirmed_at        DateTime @default(now())
+  note                String?
+
+  receiving_header receiving_headers @relation(fields: [receiving_header_id], references: [id], onDelete: Cascade)
+  user             users             @relation("ReceivingConfirmedBy", fields: [confirmed_by], references: [id], onDelete: Restrict)
+
+  @@index([receiving_header_id])
+  @@map("receiving_confirmations")
 }
 
 // =============================================================================
@@ -1076,6 +1094,8 @@ model qc_results {
   inspection_date      DateTime       @default(now())
   result               QcResultStatus
   // qc_template_id menggantikan qc_id String + qc_name String
+  // NOTE: Saat create qc_result, pastikan qc_template.qc_phase match dengan tracking.tracking_type
+  // Application layer harus validasi: tracking.tracking_type === qc_template.qc_phase
   qc_template_id       String?
   qc_place             String         @default("Unknown")
   notes                String?
@@ -1096,6 +1116,7 @@ model qc_results {
   @@index([result])
   @@index([inspection_date])
   @@index([qc_template_id])
+  @@index([tracking_id, qc_template_id]) // Composite index untuk query tracking + template
   @@map("qc_results")
 }
 

@@ -11,6 +11,10 @@ router.post('/', authenticate, controller.create);
 router.patch('/:id', authenticate, controller.update);
 router.delete('/:id', authenticate, controller.remove);
 
+// Confirmations
+router.get('/:headerId/confirmations', controller.getConfirmations);
+router.post('/:headerId/confirmations', authenticate, controller.confirm);
+
 // Nested: items under a header
 router.use('/:headerId/items', receivingItemRoutes);
 

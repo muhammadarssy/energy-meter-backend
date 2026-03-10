@@ -5,22 +5,30 @@ class TrackingService {
     async getAll(options = {}) {
         const {
             page = 1, limit = 10,
-            tracking_type, status, product_id,
+            tracking_type, status, product_id, batch_id, search = '',
             sortBy = 'created_at', sortOrder = 'desc'
         } = options;
 
         const skip = (page - 1) * limit;
-        const where = {};
+        const where = { deleted_at: null };
         if (tracking_type) where.tracking_type = tracking_type;
         if (status) where.status = status;
         if (product_id) where.product_id = product_id;
+        if (batch_id) where.batch_id = batch_id;
+        if (search) {
+            where.OR = [
+                { code_item: { contains: search, mode: 'insensitive' } },
+                { serial_number: { contains: search, mode: 'insensitive' } }
+            ];
+        }
 
         const [data, total] = await Promise.all([
             prisma.tracking.findMany({
                 where, skip, take: parseInt(limit),
                 orderBy: { [sortBy]: sortOrder },
                 include: {
-                    product: { select: { id: true, name: true, sap_code: true } }
+                    product: { select: { id: true, name: true, sap_code: true } },
+                    batch: { select: { id: true, code: true } }
                 }
             }),
             prisma.tracking.count({ where })

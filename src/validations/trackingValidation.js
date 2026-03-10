@@ -25,6 +25,8 @@ const trackingValidation = {
         tracking_type: Joi.string().valid('receiving', 'assembly', 'shipping').optional(),
         status: Joi.string().valid('created', 'on_qc', 'qc_passed', 'qc_failed', 'in_transit', 'stored', 'shipped', 'delivered').optional(),
         product_id: Joi.string().uuid().optional(),
+        batch_id: Joi.string().uuid().optional(),
+        search: Joi.string().max(100).allow('', null).optional(),
         sortBy: Joi.string().valid('created_at', 'status').default('created_at'),
         sortOrder: Joi.string().valid('asc', 'desc').default('desc')
     })

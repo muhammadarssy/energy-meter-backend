@@ -18,7 +18,6 @@ const receivingHeaderValidation = {
         location: Joi.string().max(255).optional(),
         purchase_order_id: Joi.string().uuid().optional().allow(null),
         batch_id: Joi.string().uuid().optional().allow(null),
-        status: Joi.string().valid('pending', 'accept', 'reject').optional(),
         notes: Joi.string().max(1000).allow('', null).optional()
     }).min(1),
 
@@ -26,11 +25,15 @@ const receivingHeaderValidation = {
         page: Joi.number().integer().min(1).default(1),
         limit: Joi.number().integer().min(1).max(100).default(10),
         search: Joi.string().max(255).allow('').optional(),
-        status: Joi.string().valid('pending', 'accept', 'reject').optional(),
         batch_id: Joi.string().uuid().optional(),
         purchase_order_id: Joi.string().uuid().optional(),
-        sortBy: Joi.string().valid('gr_number', 'received_date', 'status', 'created_at').default('created_at'),
+        sortBy: Joi.string().valid('gr_number', 'received_date', 'created_at').default('created_at'),
         sortOrder: Joi.string().valid('asc', 'desc').default('desc')
+    }),
+
+    confirm: Joi.object({
+        confirmed_by: Joi.string().uuid().optional(),
+        note: Joi.string().max(1000).allow('', null).optional()
     })
 };
 

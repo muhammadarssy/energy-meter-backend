@@ -32,8 +32,7 @@ const create = [
         const item = await receivingHeaderService.create({
             ...req.body,
             batch_id: batch.id,
-            received_by: req.user.id,
-            status: 'pending'
+            received_by: req.user.id
         });
         return success.created(res, 'Receiving header created', item);
     })
@@ -56,4 +55,32 @@ const remove = asyncHandler(async (req, res) => {
     return success.deleted(res, 'Receiving header deleted');
 });
 
-module.exports = { getAll, getById, create, update, remove };
+// ─── Confirmations ────────────────────────────────────────────────────────────
+
+const getConfirmations = asyncHandler(async (req, res) => {
+    const header = await receivingHeaderService.getById(req.params.headerId);
+    if (!header) return error.notFound(res, 'Receiving header not found');
+    const items = await receivingHeaderService.getConfirmationsByHeader(req.params.headerId);
+    return success.ok(res, 'Confirmations retrieved', items);
+});
+
+const confirm = [
+    validate(receivingHeaderValidation.confirm),
+    asyncHandler(async (req, res) => {
+        const header = await receivingHeaderService.getById(req.params.headerId);
+        if (!header) return error.notFound(res, 'Receiving header not found');
+        try {
+            const result = await receivingHeaderService.confirm(req.params.headerId, {
+                ...req.body,
+                confirmed_by: req.user?.id ?? req.body.confirmed_by
+            });
+            return success.created(res, 'Receiving confirmed', result);
+        } catch (err) {
+            if (err.code === 'TRACKING_EXISTS') return error.conflict(res, err.message);
+            if (err.code === 'SERIAL_INCOMPLETE') return error.badRequest(res, err.message);
+            throw err;
+        }
+    })
+];
+
+module.exports = { getAll, getById, create, update, remove, getConfirmations, confirm };
